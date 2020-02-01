@@ -220,11 +220,19 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
    * If the buffer becomes too large, readFrom will panic with ErrTooLarge.
    * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
    */
-  async readFrom(r: Reader): Promise<number> {
+  async readFrom(r: Reader, maxBytes?: number): Promise<number> {
+    maxBytes = maxBytes === undefined ? MAX_SIZE : maxBytes;
+    if (maxBytes < 0) {
+      throw new Error("Buffer.readFrom: negative maxBytes");
+    }
     let n = 0;
     while (true) {
       try {
-        const i = this._grow(MIN_READ);
+        const needed = maxBytes < MIN_READ ? maxBytes : MIN_READ;
+        if (needed <= 0) {
+          return n;
+        }
+        const i = this._grow(needed);
         this._reslice(i);
         const fub = new Uint8Array(this.buf.buffer, i);
         const nread = await r.read(fub);
@@ -233,6 +241,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         }
         this._reslice(i + nread);
         n += nread;
+        maxBytes -= nread;
       } catch (e) {
         if (e.kind !== ErrorKind.BadResource) throw e;
         return -n - 1;
@@ -242,11 +251,19 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
 
   /** Sync version of `readFrom`
    */
-  readFromSync(r: SyncReader): number {
+  readFromSync(r: SyncReader, maxBytes?: number): number {
+    maxBytes = maxBytes === undefined ? MAX_SIZE : maxBytes;
+    if (maxBytes < 0) {
+      throw new Error("Buffer.readFromSync: negative maxBytes");
+    }
     let n = 0;
     while (true) {
       try {
-        const i = this._grow(MIN_READ);
+        const needed = maxBytes < MIN_READ ? maxBytes : MIN_READ;
+        if (needed <= 0) {
+          return n;
+        }
+        const i = this._grow(needed);
         this._reslice(i);
         const fub = new Uint8Array(this.buf.buffer, i);
         const nread = r.readSync(fub);
@@ -255,6 +272,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         }
         this._reslice(i + nread);
         n += nread;
+        maxBytes -= nread;
       } catch (e) {
         if (e.kind !== ErrorKind.BadResource) throw e;
         return -n - 1;
@@ -282,7 +300,7 @@ export async function readAll(
 ): Promise<ReadAllResponse> {
   const buf = new Buffer();
   try {
-    const nbytes = await buf.readFrom(r);
+    const nbytes = await buf.readFrom(r, options.maxBytes);
     return { closed: nbytes < 0, content: buf.bytes() };
   } catch (e) {
     return { aborted: e, content: buf.bytes() };
@@ -296,7 +314,7 @@ export function readAllSync(
   options: ReadAllOption = {}
 ): ReadAllResponse {
   const buf = new Buffer();
-  const nbytes = buf.readFromSync(r);
+  const nbytes = buf.readFromSync(r, options.maxBytes);
   return { closed: nbytes < 0, content: buf.bytes() };
 }
 

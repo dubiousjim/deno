@@ -585,10 +585,10 @@ declare namespace Deno {
      * If the buffer becomes too large, readFrom will panic with ErrTooLarge.
      * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
      */
-    readFrom(r: Reader): Promise<number>;
+    readFrom(r: Reader, maxBytes?: number): Promise<number>;
     /** Sync version of `readFrom`
      */
-    readFromSync(r: SyncReader): number;
+    readFromSync(r: SyncReader, maxBytes?: number): number;
   }
 
   export interface ReadAllOption {
