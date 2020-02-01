@@ -292,6 +292,8 @@ export interface ReadAllResponse {
   truncated?: boolean;
 }
 
+const readAllEOFBuffer = new Uint8Array(1);
+
 /** Read `r` until EOF and return the content as `ReadAllResponse`.
  */
 export async function readAll(
@@ -300,8 +302,24 @@ export async function readAll(
 ): Promise<ReadAllResponse> {
   const buf = new Buffer();
   try {
-    const nbytes = await buf.readFrom(r, options.maxBytes);
-    return { closed: nbytes < 0, content: buf.bytes() };
+    let nbytes = await buf.readFrom(r, options.maxBytes);
+    const closed = nbytes < 0;
+    nbytes = closed ? -nbytes - 1 : nbytes;
+    let truncated = false;
+    if (nbytes === options.maxBytes) {
+      // check if file is longer than maxBytes
+      try {
+        const n = await r.read(readAllEOFBuffer);
+        if (n !== EOF) {
+          truncated = true;
+        }
+      } catch (e) {
+        if (e.kind !== ErrorKind.BadResource) throw e;
+        // rid closed before we could check
+        return { closed, content: buf.bytes() };
+      }
+    }
+    return { closed, content: buf.bytes(), truncated };
   } catch (e) {
     return { aborted: e, content: buf.bytes() };
   }
@@ -314,8 +332,24 @@ export function readAllSync(
   options: ReadAllOption = {}
 ): ReadAllResponse {
   const buf = new Buffer();
-  const nbytes = buf.readFromSync(r, options.maxBytes);
-  return { closed: nbytes < 0, content: buf.bytes() };
+  let nbytes = buf.readFromSync(r, options.maxBytes);
+  const closed = nbytes < 0;
+  nbytes = closed ? -nbytes - 1 : nbytes;
+  let truncated = false;
+  if (nbytes === options.maxBytes) {
+    // check if file is longer than maxBytes
+    try {
+      const n = r.readSync(readAllEOFBuffer);
+      if (n !== EOF) {
+        truncated = true;
+      }
+    } catch (e) {
+      if (e.kind !== ErrorKind.BadResource) throw e;
+      // rid closed before we could check
+      return { closed, content: buf.bytes() };
+    }
+  }
+  return { closed, content: buf.bytes(), truncated };
 }
 
 /** Write all the content of `arr` to `w`.
