@@ -593,6 +593,7 @@ declare namespace Deno {
 
   export interface ReadAllOption {
     maxBytes?: number;
+    rejector?: (rej: (reason: unknown) => void) => void;
   }
 
   export interface ReadAllResponse {

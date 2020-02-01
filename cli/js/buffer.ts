@@ -283,6 +283,7 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
 
 export interface ReadAllOption {
   maxBytes?: number;
+  rejector?: (rej: (reason: unknown) => void) => void;
 }
 
 export interface ReadAllResponse {
@@ -296,33 +297,37 @@ const readAllEOFBuffer = new Uint8Array(1);
 
 /** Read `r` until EOF and return the content as `ReadAllResponse`.
  */
-export async function readAll(
+export function readAll(
   r: Reader,
   options: ReadAllOption = {}
 ): Promise<ReadAllResponse> {
   const buf = new Buffer();
-  try {
-    let nbytes = await buf.readFrom(r, options.maxBytes);
-    const closed = nbytes < 0;
-    nbytes = closed ? -nbytes - 1 : nbytes;
-    let truncated = false;
-    if (nbytes === options.maxBytes) {
-      // check if file is longer than maxBytes
-      try {
-        const n = await r.read(readAllEOFBuffer);
-        if (n !== EOF) {
-          truncated = true;
+  const p: Promise<number> = new Promise((res, rej) => {
+    if (options.rejector) options.rejector(rej);
+    buf.readFrom(r, options.maxBytes).then(res);
+  });
+  return p.then(
+    async (nbytes: number) => {
+      const closed = nbytes < 0;
+      nbytes = closed ? -nbytes - 1 : nbytes;
+      let truncated = false;
+      if (nbytes === options.maxBytes) {
+        // check if file is longer than maxBytes
+        try {
+          const n = await r.read(readAllEOFBuffer);
+          if (n !== EOF) {
+            truncated = true;
+          }
+        } catch (e) {
+          if (e.kind !== ErrorKind.BadResource) throw e;
+          // rid closed before we could check
+          return { closed, content: buf.bytes() };
         }
-      } catch (e) {
-        if (e.kind !== ErrorKind.BadResource) throw e;
-        // rid closed before we could check
-        return { closed, content: buf.bytes() };
       }
-    }
-    return { closed, content: buf.bytes(), truncated };
-  } catch (e) {
-    return { aborted: e, content: buf.bytes() };
-  }
+      return { closed, content: buf.bytes(), truncated };
+    },
+    reason => ({ aborted: reason, content: buf.bytes() })
+  );
 }
 
 /** Read synchronously `r` until EOF and return the content as `ReadAllResponse`.
