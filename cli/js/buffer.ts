@@ -337,24 +337,28 @@ export function readAllSync(
   options: ReadAllOption = {}
 ): ReadAllResponse {
   const buf = new Buffer();
-  let nbytes = buf.readFromSync(r, options.maxBytes);
-  const closed = nbytes < 0;
-  nbytes = closed ? -nbytes - 1 : nbytes;
-  let truncated = false;
-  if (nbytes === options.maxBytes) {
-    // check if file is longer than maxBytes
-    try {
-      const n = r.readSync(readAllEOFBuffer);
-      if (n !== EOF) {
-        truncated = true;
+  try {
+    let nbytes = buf.readFromSync(r, options.maxBytes);
+    const closed = nbytes < 0;
+    nbytes = closed ? -nbytes - 1 : nbytes;
+    let truncated = false;
+    if (nbytes === options.maxBytes) {
+      // check if file is longer than maxBytes
+      try {
+        const n = r.readSync(readAllEOFBuffer);
+        if (n !== EOF) {
+          truncated = true;
+        }
+      } catch (e) {
+        if (e.kind !== ErrorKind.BadResource) throw e;
+        // rid closed before we could check
+        return { closed, content: buf.bytes() };
       }
-    } catch (e) {
-      if (e.kind !== ErrorKind.BadResource) throw e;
-      // rid closed before we could check
-      return { closed, content: buf.bytes() };
     }
+    return { closed, content: buf.bytes(), truncated };
+  } catch (e) {
+    return { aborted: e, content: buf.bytes() };
   }
-  return { closed, content: buf.bytes(), truncated };
 }
 
 /** Write all the content of `arr` to `w`.
