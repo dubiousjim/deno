@@ -6,6 +6,7 @@ import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { assert, unreachable } from "./util.ts";
 import { build } from "./build.ts";
+import { ErrorKind } from "./errors.ts";
 
 /** How to handle subprocess stdio.
  *
@@ -61,12 +62,15 @@ export function kill(pid: number, signo: number): void {
   sendSync(dispatch.OP_KILL, { pid, signo });
 }
 
+type RejectType = (alpha: boolean) => void;
+
 export class Process {
   readonly rid: number;
   readonly pid: number;
   readonly stdin?: WriteCloser;
   readonly stdout?: ReadCloser;
   readonly stderr?: ReadCloser;
+  private outReject?: RejectType;
 
   // @internal
   constructor(res: RunResponse, readonly maxOutput?: number) {
@@ -98,11 +102,35 @@ export class Process {
     if (!this.stdout) {
       throw new Error("Process.output: stdout is undefined");
     }
+    if (this.outReject) {
+      throw new Error("Process.output: stdout already being captured");
+    }
+    let tryClose = true;
     try {
-      const output = await readAll(this.stdout);
+      const output = await readAll(this.stdout, {
+        maxBytes: this.maxOutput,
+        rejector: (rej: RejectType) => (this.outReject = rej)
+      });
+      if (output.closed) {
+        tryClose = false;
+      }
+      if (output.truncated) {
+        throw new ExceededError(
+          this.maxOutput!,
+          output.content,
+          `Process ${this.rid}'s stdout`
+        );
+      }
       return output.content;
     } finally {
-      this.stdout.close();
+      this.outReject = undefined;
+      if (tryClose) {
+        try {
+          this.stdout.close();
+        } catch (e) {
+          if (e.kind !== ErrorKind.BadResource) throw e;
+        }
+      }
     }
   }
 
