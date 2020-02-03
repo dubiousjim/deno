@@ -71,6 +71,7 @@ export class Process {
   readonly stdout?: ReadCloser;
   readonly stderr?: ReadCloser;
   private outReject?: RejectType;
+  private errReject?: RejectType;
 
   // @internal
   constructor(res: RunResponse, readonly maxOutput?: number) {
@@ -142,11 +143,27 @@ export class Process {
     if (!this.stderr) {
       throw new Error("Process.stderrOutput: stderr is undefined");
     }
+    if (this.errReject) {
+      throw new Error("Process.stderrOutput: stderr already being captured");
+    }
+    let tryClose = true;
     try {
-      const output = await readAll(this.stderr);
+      const output = await readAll(this.stderr, {
+        rejector: (rej: RejectType) => (this.errReject = rej)
+      });
+      if (output.closed) {
+        tryClose = false;
+      }
       return output.content;
     } finally {
-      this.stderr.close();
+      this.errReject = undefined;
+      if (tryClose) {
+        try {
+          this.stderr.close();
+        } catch (e) {
+          if (e.kind !== ErrorKind.BadResource) throw e;
+        }
+      }
     }
   }
 
