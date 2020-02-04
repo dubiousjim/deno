@@ -72,6 +72,9 @@ export class Process {
   readonly stderr?: ReadCloser;
   private outReject?: RejectType;
   private errReject?: RejectType;
+  private exited = false;
+  private statPromise: Promise<ProcessStatus>;
+  private statReject?: (e: Error) => void;
 
   // @internal
   constructor(res: RunResponse, readonly maxOutput?: number) {
@@ -89,10 +92,29 @@ export class Process {
     if (res.stderrRid && res.stderrRid > 0) {
       this.stderr = new File(res.stderrRid);
     }
+
+    this.statPromise = new Promise((res, rej) => {
+      this.statReject = rej;
+      runStatus(this.rid).then(
+        data => {
+          if (this.exited) {
+            if (this.outReject) this.outReject(true);
+            if (this.errReject) this.errReject(true);
+          }
+          this.exited = true;
+          res(data);
+        },
+        err => {
+          assert(this.exited && err.kind === ErrorKind.BadResource);
+          if (this.outReject) this.outReject(false);
+          if (this.errReject) this.errReject(false);
+        }
+      );
+    });
   }
 
   async status(): Promise<ProcessStatus> {
-    return await runStatus(this.rid);
+    return this.statPromise;
   }
 
   /** Buffer the stdout and return it as Uint8Array after EOF.
@@ -168,10 +190,21 @@ export class Process {
   }
 
   close(): void {
-    close(this.rid);
+    try {
+      close(this.rid);
+    } catch (e) {
+      if (e.kind !== ErrorKind.BadResource) throw e;
+    }
+    if (!this.exited) {
+      this.exited = true;
+      this.statReject!(new Error("Process.status: already closed"));
+    }
   }
 
   kill(signo: number): void {
+    if (this.exited) {
+      throw new Error("Process.kill: already exited");
+    }
     kill(this.pid, signo);
   }
 }
