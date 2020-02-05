@@ -593,6 +593,8 @@ declare namespace Deno {
 
   export interface ReadAllResponse {
     content: Uint8Array;
+    closed?: boolean;
+    aborted?: unknown;
   }
 
   /** Read `r` until EOF and return the content as `ReadAllResponse` */
