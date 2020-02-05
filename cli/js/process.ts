@@ -225,6 +225,12 @@ export class ExceededError extends Error {
   }
 }
 
+export class TimeoutError extends Error {
+  constructor(readonly ms: number, caller?: string) {
+    super(`Timeout after ${ms} ms${caller ? ` (${caller})` : ""}`);
+  }
+}
+
 // TODO: this method is only used to validate proper option, probably can be renamed
 function stdioMap(s: string): string {
   switch (s) {

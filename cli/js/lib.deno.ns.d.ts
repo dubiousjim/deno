@@ -1595,6 +1595,11 @@ declare namespace Deno {
     constructor(nbytes: number, buffer: Uint8Array, caller?: string);
   }
 
+  export class TimeoutError extends Error {
+    readonly ms: number;
+    constructor(ms: number, caller?: string);
+  }
+
   /** UNSTABLE:  Maybe rename args to argv to differentiate from Deno.args Note
    * the first element needs to be a path to the binary.
    */
