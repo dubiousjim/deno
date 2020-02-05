@@ -271,6 +271,7 @@ export interface ReadAllResponse {
   content: Uint8Array;
   closed?: boolean;
   aborted?: unknown;
+  truncated?: boolean;
 }
 
 /** Read `r` until EOF and return the content as `ReadAllResponse`.
