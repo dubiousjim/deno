@@ -1588,6 +1588,12 @@ declare namespace Deno {
     signal?: number;
   }
 
+  export class ExceededError extends Error {
+    readonly nbytes: number;
+    readonly buffer: Uint8Array;
+    constructor(nbytes: number, buffer: Uint8Array, caller?: string);
+  }
+
   /** UNSTABLE:  Maybe rename args to argv to differentiate from Deno.args Note
    * the first element needs to be a path to the binary.
    */

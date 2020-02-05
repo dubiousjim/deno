@@ -136,6 +136,16 @@ export interface ProcessStatus {
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
+export class ExceededError extends Error {
+  constructor(
+    readonly nbytes: number,
+    readonly buffer: Uint8Array,
+    caller?: string
+  ) {
+    super(`Exceeded ${nbytes} bytes${caller ? ` (${caller})` : ""}`);
+  }
+}
+
 // TODO: this method is only used to validate proper option, probably can be renamed
 function stdioMap(s: string): string {
   switch (s) {
