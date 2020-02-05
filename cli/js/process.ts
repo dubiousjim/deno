@@ -29,6 +29,7 @@ export interface RunOptions {
   stdout?: ProcessStdio | number;
   stderr?: ProcessStdio | number;
   stdin?: ProcessStdio | number;
+  maxOutput?: number;
 }
 
 interface RunStatusResponse {
@@ -68,7 +69,7 @@ export class Process {
   readonly stderr?: ReadCloser;
 
   // @internal
-  constructor(res: RunResponse) {
+  constructor(res: RunResponse, readonly maxOutput?: number) {
     this.rid = res.rid;
     this.pid = res.pid;
 
@@ -233,7 +234,7 @@ export function run(opt: RunOptions): Process {
   };
 
   const res = sendSync(dispatch.OP_RUN, req) as RunResponse;
-  return new Process(res);
+  return new Process(res, opt.maxOutput);
 }
 
 // From `kill -l`

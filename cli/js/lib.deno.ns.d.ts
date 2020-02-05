@@ -1567,6 +1567,7 @@ declare namespace Deno {
     readonly stdin?: WriteCloser;
     readonly stdout?: ReadCloser;
     readonly stderr?: ReadCloser;
+    readonly maxOutput?: number;
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout and return it as Uint8Array after EOF.
      * You must set stdout to "piped" when creating the process.
@@ -1606,6 +1607,7 @@ declare namespace Deno {
     stdout?: ProcessStdio | number;
     stderr?: ProcessStdio | number;
     stdin?: ProcessStdio | number;
+    maxOutput?: number;
   }
 
   /**
