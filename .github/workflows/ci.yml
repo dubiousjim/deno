@@ -33,7 +33,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v1
         with:
-          fetch-depth: 1
+          fetch-depth: 20
           submodules: true
 
       - name: Create source tarballs (release, linux)
@@ -149,7 +149,7 @@ jobs:
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/deno.git gh-pages
           python ./tools/build_benchmark_jsons.py
           cd gh-pages
-          git config user.email "propelml@gmail.com"
+          git config user.email "dubiousjim@gmail.com"
           git config user.name "denobot"
           git add .
           git commit --message "Update benchmarks"
