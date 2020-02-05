@@ -31,6 +31,7 @@ export interface RunOptions {
   stderr?: ProcessStdio | number;
   stdin?: ProcessStdio | number;
   maxOutput?: number;
+  timeout?: number;
 }
 
 interface RunStatusResponse {
@@ -77,7 +78,11 @@ export class Process {
   private statReject?: (e: Error) => void;
 
   // @internal
-  constructor(res: RunResponse, readonly maxOutput?: number) {
+  constructor(
+    res: RunResponse,
+    readonly timeout: number,
+    readonly maxOutput?: number
+  ) {
     this.rid = res.rid;
     this.pid = res.pid;
 
@@ -318,7 +323,7 @@ export function run(opt: RunOptions): Process {
   };
 
   const res = sendSync(dispatch.OP_RUN, req) as RunResponse;
-  return new Process(res, opt.maxOutput);
+  return new Process(res, opt.timeout || 0, opt.maxOutput);
 }
 
 // From `kill -l`
