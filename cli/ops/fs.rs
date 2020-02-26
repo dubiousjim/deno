@@ -16,7 +16,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
-use tokio;
+use tokio::fs as tokio_fs;
 
 use utime::set_file_times;
 
@@ -760,7 +760,7 @@ fn op_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldname.display(), newname.display());
-    std::fs::hard_link(&oldname, &newname)?;
+    fs::hard_link(&oldname, &newname)?;
     Ok(json!({}))
   })
 }
