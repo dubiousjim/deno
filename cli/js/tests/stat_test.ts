@@ -229,3 +229,119 @@ unitTest(
     assert(s.anyModified !== null);
   }
 );
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: true } },
+  function fstatSyncSuccess(): void {
+    const f = Deno.openSync("README.md", "r");
+    const packageInfo = f.statSync();
+    f.close();
+    assert(packageInfo.length > 0);
+    assert(packageInfo.isFile());
+    assert(!packageInfo.isSymlink());
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: true } },
+  async function fstatSuccess(): Promise<void> {
+    const f = await Deno.open("README.md", "r");
+    const packageInfo = await f.stat();
+    f.close();
+    assert(packageInfo.length > 0);
+    assert(packageInfo.isFile());
+    assert(!packageInfo.isSymlink());
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: false, write: true } },
+  function fstatSyncDenoPermFail(): void {
+    let err;
+    let caughtError = false;
+    const filename = Deno.makeTempDirSync() + "/test_statSync.txt";
+    const f = Deno.openSync(filename, "w");
+    try {
+      f.statSync();
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if we lack --read permissions
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: false, write: true } },
+  async function fstatDenoPermFail(): Promise<void> {
+    let err;
+    let caughtError = false;
+    const filename = (await Deno.makeTempDir()) + "/test_stat.txt";
+    const f = await Deno.open(filename, "w");
+    try {
+      await f.stat();
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if we lack --read permissions
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  function fstatSyncModeFail(): void {
+    let err;
+    let caughtError = false;
+    const filename = Deno.makeTempDirSync() + "/test_statSync.txt";
+    const f = Deno.openSync(filename, "w");
+    try {
+      f.statSync();
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if fd is not opened for reading
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  }
+);
+
+unitTest(
+  { skip: Deno.build.os === "win", perms: { read: true, write: true } },
+  async function fstatModeFail(): Promise<void> {
+    let err;
+    let caughtError = false;
+    const filename = (await Deno.makeTempDir()) + "/test_stat.txt";
+    const f = await Deno.open(filename, "w");
+    try {
+      await f.stat();
+    } catch (e) {
+      caughtError = true;
+      err = e;
+    }
+    f.close();
+    // throw if fd is not opened for reading
+    assert(caughtError);
+    if (caughtError) {
+      assert(err instanceof Deno.errors.PermissionDenied);
+      assertEquals(err.name, "PermissionDenied");
+    }
+  }
+);
