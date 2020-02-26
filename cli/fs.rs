@@ -49,8 +49,9 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 #[cfg(unix)]
 fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
-  debug!("set file mode to {}", mode);
-  file.set_permissions(PermissionsExt::from_mode(mode & 0o777))
+  let mode = mode & 0o777;
+  debug!("set file mode to {:o}", mode);
+  file.set_permissions(PermissionsExt::from_mode(mode))
 }
 
 #[cfg(not(unix))]
@@ -95,7 +96,7 @@ pub fn make_temp(
 }
 
 pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
-  debug!("mkdir -p {}", path.display());
+  // debug!("mkdir -p {}", path.display());
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permission(&mut builder, mode);
@@ -104,8 +105,9 @@ pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
-  debug!("set dir mode to {}", mode);
-  builder.mode(mode & 0o777);
+  let mode = mode & 0o777;
+  debug!("set dir mode to {:o}", mode);
+  builder.mode(mode);
 }
 
 #[cfg(not(unix))]
