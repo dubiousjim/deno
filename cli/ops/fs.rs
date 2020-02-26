@@ -292,6 +292,7 @@ fn get_stat_json(
     "modified":to_seconds!(metadata.modified()), // changed when fdatasync
     "created":to_seconds!(metadata.created()),
     // Following are only valid under Unix.
+    "ctime": usm!(ctime), // i64, changed when fdatasync or chown/chmod/rename/moved
     "dev": usm!(dev), // u64
     "ino": usm!(ino), // u64
     "mode": usm!(mode), // usually u32, may be u16 on Mac
