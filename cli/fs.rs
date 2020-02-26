@@ -10,6 +10,9 @@ use rand;
 use rand::Rng;
 use walkdir::WalkDir;
 
+pub use remove_dir_all::remove_dir_all;
+pub use utime::set_file_times;
+
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 
