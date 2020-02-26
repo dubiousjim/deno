@@ -18,6 +18,11 @@ pub use utime::set_file_times;
 #[cfg(unix)]
 pub use std::os::unix::fs::symlink;
 
+/*
+#[cfg(unix)]
+pub use nix::sys::stat::{fstat, SFlag};
+*/
+
 #[cfg(unix)]
 use nix::sys::stat::futimens;
 
@@ -180,7 +185,7 @@ pub fn make_temp(
       Ok(())
     };
     match r {
-      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
+      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue, // HUH: why ref?
       Ok(_) => return Ok(buf),
       Err(e) => return Err(e),
     }

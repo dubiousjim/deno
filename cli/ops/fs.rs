@@ -108,6 +108,7 @@ fn op_mkdir(
 struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
+  // #[allow(unused)]
   perm: u32,
 }
 
