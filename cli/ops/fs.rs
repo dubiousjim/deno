@@ -522,22 +522,22 @@ fn get_stat_json(
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
     // In seconds (i64). Available on both Unix or Windows.
-    "modified":to_seconds!(metadata.modified()),
+    "modified":to_seconds!(metadata.modified()), // changed when fdatasync
     "accessed":to_seconds!(metadata.accessed()),
     "created":to_seconds!(metadata.created()),
     // Following are only valid under Unix.
-    "ctime": usm!(ctime),
-    "dev": usm!(dev),
-    "ino": usm!(ino),
-    "mode": usm!(mode),
-    "nlink": usm!(nlink),
-    "uid": usm!(uid),
-    "gid": usm!(gid),
-    "rdev": usm!(rdev),
+    "ctime": usm!(ctime), // i64, changed when fdatasync or chown/chmod/rename/moved
+    "dev": usm!(dev), // u64
+    "ino": usm!(ino), // u64
+    "mode": usm!(mode), // usually u32, may be u16 on Mac
+    "nlink": usm!(nlink), // u64
+    "uid": usm!(uid), // u32
+    "gid": usm!(gid), // u32
+    "rdev": usm!(rdev), // u64
     // TODO(kevinkassimo): *time_nsec requires BigInt.
     // Probably should be treated as String if we need to add them.
-    "blksize": usm!(blksize),
-    "blocks": usm!(blocks),
+    "blksize": usm!(blksize) as i64, // was u64
+    "blocks": usm!(blocks) as i64, // was u64
   });
 
   // "name" is an optional field by our design.
