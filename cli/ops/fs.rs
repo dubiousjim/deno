@@ -90,6 +90,9 @@ fn op_open(
   };
 
   if let Some(options) = args.options {
+    let create = options.create;
+    let create_new = options.create_new;
+
     if options.read {
       state.check_read(&path)?;
     }
@@ -100,11 +103,11 @@ fn op_open(
 
     open_options
       .read(options.read)
-      .create(options.create)
+      .create(create)
       .write(options.write)
       .truncate(options.truncate)
       .append(options.append)
-      .create_new(options.create_new);
+      .create_new(create_new);
   } else if let Some(open_mode) = args.open_mode {
     let open_mode = open_mode.as_ref();
     match open_mode {
