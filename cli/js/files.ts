@@ -54,8 +54,7 @@ export function openSync(
   if (typeof modeOrOptions === "string") {
     openMode = modeOrOptions;
   } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions;
+    options = checkOpenOptions(modeOrOptions);
     mode = options.mode;
   }
 
@@ -95,8 +94,7 @@ export async function open(
   if (typeof modeOrOptions === "string") {
     openMode = modeOrOptions;
   } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions;
+    options = checkOpenOptions(modeOrOptions);
     mode = options.mode;
   }
 
@@ -331,6 +329,10 @@ export interface OpenOptions {
    * access to be used. When createNew is set to `true`, create and truncate
    * are ignored. */
   createNew?: boolean;
+  /** Sets the option to allow overwriting existing file (defaults to `true` when
+   * writing). Note that setting `{ ..., clobber: false, create: true }` has the
+   * same effect as `{ ..., createNew: true }`. */
+  clobber?: boolean;
   /** Permissions to use if creating the file (defaults to `0o666`, before
    * the process's umask).
    * It's an error to specify mode without also setting create or createNew to `true`.
@@ -354,10 +356,9 @@ export interface OpenOptions {
 export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
 
 /** Check if OpenOptions is set to valid combination of options.
- *  @returns Tuple representing if openMode is valid and error message if it's not
  *  @internal
  */
-function checkOpenOptions(options: OpenOptions): void {
+function checkOpenOptions(options: OpenOptions): OpenOptions {
   if (Object.values(options).filter(val => val === true).length === 0) {
     throw new Error("OpenOptions requires at least one option to be true");
   }
@@ -366,12 +367,36 @@ function checkOpenOptions(options: OpenOptions): void {
     throw new Error("'truncate' option requires 'write' option");
   }
 
-  const createOrCreateNewWithoutWriteOrAppend =
-    (options.create || options.createNew) && !(options.write || options.append);
+  const createOrCreateNew = options.create || options.createNew;
 
-  if (createOrCreateNewWithoutWriteOrAppend) {
+  const writeOrAppend = options.write || options.append;
+
+  if (createOrCreateNew && !writeOrAppend) {
     throw new Error(
       "'create' or 'createNew' options require 'write' or 'append' option"
     );
   }
+
+  if (options.clobber) {
+    if (options.createNew) {
+      throw new Error("'clobber' option incompatible with 'createNew' option");
+    } else if (!writeOrAppend) {
+      throw new Error("'clobber' option requires 'write' or 'append' option");
+    }
+  } else if (options.clobber === false) {
+    if (!createOrCreateNew && writeOrAppend) {
+      throw new Error(
+        "disabling 'clobber', 'create', and 'createNew' options requires read-only access"
+      );
+    } else if (options.create) {
+      if (options.createNew === false) {
+        throw new Error(
+          "when option 'create' is true, one of options 'clobber' or 'createNew' is implied"
+        );
+      }
+      return { ...options, createNew: true };
+    }
+  }
+
+  return options;
 }
