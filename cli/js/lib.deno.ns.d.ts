@@ -6,6 +6,7 @@
 declare namespace Deno {
   /** The current process id of the runtime. */
   export let pid: number;
+  // JIM8 ppid, etc
 
   /** Reflects the NO_COLOR environment variable.
    *
