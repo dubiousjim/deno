@@ -453,6 +453,7 @@ fn op_symlink(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
+  #[allow(unused)]
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
   let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
 
@@ -463,9 +464,11 @@ fn op_symlink(
   }
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&oldname, &newname)?;
+    {
+      debug!("op_symlink {} {}", oldname.display(), newname.display());
+      deno_fs::symlink(&oldname, &newname)?;
+    }
     Ok(json!({}))
   })
 }
