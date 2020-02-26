@@ -1885,7 +1885,7 @@ declare namespace Deno {
    * `Deno.args`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
-     * binary */
+     * binary/shebang script. */
     args: string[];
     cwd?: string;
     env?: {
@@ -2395,7 +2395,9 @@ declare namespace Deno {
    * Then `Deno.args` will contain:
    *
    *      [ "/etc/passwd" ]
-   */
+   *
+   * The scriptPath (above, "https://deno.land/std/examples/cat.ts") can be
+   * retrieved as `location.pathname`. JIM8 */
   export const args: string[];
 
   /** **UNSTABLE**: new API, yet to be vetted.
