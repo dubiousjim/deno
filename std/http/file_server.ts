@@ -308,7 +308,7 @@ listenAndServe(
     }
     const fsPath = posix.join(target, normalizedUrl);
 
-    let response: Response | undefined;
+    let response: Response | undefined; // FIXME should this be ||
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {
