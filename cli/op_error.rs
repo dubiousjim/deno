@@ -26,6 +26,7 @@ use std::env::VarError;
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::num;
 use url;
 
 // Warning! The values in this enum are duplicated in js/errors.ts
@@ -209,6 +210,15 @@ impl From<&io::Error> for OpError {
     Self {
       kind,
       msg: error.to_string(),
+    }
+  }
+}
+
+impl From<num::TryFromIntError> for OpError {
+  fn from(err: num::TryFromIntError) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: err.to_string(), // "out of range integral type conversion attempted".to_string(),
     }
   }
 }
