@@ -272,8 +272,10 @@ impl From<&ReadlineError> for OpError {
       Io(err) => return err.into(),
       Eof => ErrorKind::UnexpectedEof,
       Interrupted => ErrorKind::Interrupted,
+      /* FIXME broke with nix upgrade
       #[cfg(unix)]
       Errno(err) => return err.into(),
+      */
       _ => unimplemented!(),
     };
 
