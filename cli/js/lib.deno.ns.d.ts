@@ -582,6 +582,14 @@ declare namespace Deno {
     close(): void;
     sync(): void;
     datasync(): void;
+    truncate(len?: number): Promise<void>;
+    truncateSync(len?: number): void;
+    chmod(mode: number): Promise<void>;
+    chmodSync(mode: number): void;
+    utime(atime: number | Date, mtime: number | Date): Promise<void>;
+    utimeSync(atime: number | Date, mtime: number | Date): void;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
   }
 
   /** An instance of `Deno.File` for `stdin`. */
@@ -878,7 +886,7 @@ declare namespace Deno {
    *       Deno.chmodSync("/path/to/file", 0o666);
    *
    * Requires `allow-write` permission. */
-  export function chmodSync(path: string, mode: number): void;
+  export function chmodSync(path: string | number, mode: number): void;
 
   /** Changes the permission of a specific file/directory of specified path.
    * Ignores the process's umask.
@@ -886,7 +894,7 @@ declare namespace Deno {
    *       await Deno.chmod("/path/to/file", 0o666);
    *
    * Requires `allow-write` permission. */
-  export function chmod(path: string, mode: number): Promise<void>;
+  export function chmod(path: string | number, mode: number): Promise<void>;
 
   // @url js/chown.d.ts
 
@@ -924,7 +932,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function utimeSync(
-    path: string,
+    path: string | number,
     atime: number | Date,
     mtime: number | Date
   ): void;
@@ -939,7 +947,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function utime(
-    path: string,
+    path: string | number,
     atime: number | Date,
     mtime: number | Date
   ): Promise<void>;
@@ -1224,7 +1232,7 @@ declare namespace Deno {
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function stat(path: string): Promise<FileInfo>;
+  export function stat(path: string | number): Promise<FileInfo>;
 
   /** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
    * always follow symlinks.
@@ -1233,7 +1241,7 @@ declare namespace Deno {
    *       assert(fileInfo.isFile());
    *
    * Requires `allow-read` permission. */
-  export function statSync(path: string): FileInfo;
+  export function statSync(path: string | number): FileInfo;
 
   // @url js/link.d.ts
 
@@ -1523,6 +1531,8 @@ declare namespace Deno {
     options?: TruncateOptions
   ): void;
 
+  export function truncateSync(rid: number, len?: number): void;
+
   /** Truncates or extends the specified file, to reach the specified `len`.
    *
    *       await Deno.truncate("hello.txt", 10);
@@ -1533,6 +1543,8 @@ declare namespace Deno {
     len?: number,
     options?: TruncateOptions
   ): Promise<void>;
+
+  export function truncate(rid: number, len?: number): Promise<void>;
 
   export interface AsyncHandler {
     (msg: Uint8Array): void;
