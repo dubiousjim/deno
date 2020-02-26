@@ -59,12 +59,12 @@ test(async function serveDirectory(): Promise<void> {
     assert(page.includes("README.md"));
 
     // `Deno.FileInfo` is not completely compatible with Windows yet
-    // TODO: `mode` should work correctly in the future.
+    // TODO: `perm` should work correctly in the future.
     // Correct this test case accordingly.
     Deno.build.os !== "win" &&
-      assert(/<td class="mode">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));
+      assert(/<td class="perm">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));
     Deno.build.os === "win" &&
-      assert(/<td class="mode">(\s)*\(unknown mode\)(\s)*<\/td>/.test(page));
+      assert(/<td class="perm">(\s)*\(unknown perm\)(\s)*<\/td>/.test(page));
     assert(page.includes(`<a href="/README.md">README.md</a>`));
   } finally {
     killFileServer();
