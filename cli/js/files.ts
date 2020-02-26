@@ -16,6 +16,11 @@ import {
   sendAsync as sendAsyncJson
 } from "./ops/dispatch_json.ts";
 import { close } from "./ops/resources.ts";
+import { truncate, truncateSync } from "./truncate.ts";
+import { chmod, chmodSync } from "./chmod.ts";
+import { utime, utimeSync } from "./utime.ts";
+import { stat, statSync } from "./stat.ts";
+import { FileInfo } from "./file_info.ts";
 import { OPS_CACHE } from "./runtime.ts";
 
 // This is done because read/write are extremely performance sensitive.
@@ -299,6 +304,38 @@ export class File
 
   datasync(): void {
     sendSyncJson("op_datasync", { rid: this.rid });
+  }
+
+  truncate(len?: number): Promise<void> {
+    return truncate(this.rid, len);
+  }
+
+  truncateSync(len?: number): void {
+    return truncateSync(this.rid, len);
+  }
+
+  chmod(mode: number): Promise<void> {
+    return chmod(this.rid, mode);
+  }
+
+  chmodSync(mode: number): void {
+    return chmodSync(this.rid, mode);
+  }
+
+  utime(atime: number | Date, mtime: number | Date): Promise<void> {
+    return utime(this.rid, atime, mtime);
+  }
+
+  utimeSync(atime: number | Date, mtime: number | Date): void {
+    return utimeSync(this.rid, atime, mtime);
+  }
+
+  stat(): Promise<FileInfo> {
+    return stat(this.rid);
+  }
+
+  statSync(): FileInfo {
+    return statSync(this.rid);
   }
 }
 
