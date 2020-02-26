@@ -11,6 +11,7 @@ use futures::future::FutureExt;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
+use std::convert::TryInto;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -200,7 +201,7 @@ fn op_open(
 struct SeekArgs {
   promise_id: Option<u64>,
   rid: i32,
-  offset: i32,
+  offset: i64,
   whence: i32,
 }
 
@@ -212,12 +213,16 @@ fn op_seek(
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
-  let whence = args.whence as u32;
+  let whence = args.whence;
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
-    0 => io::SeekFrom::Start(offset as u64),
-    1 => io::SeekFrom::Current(i64::from(offset)),
-    2 => io::SeekFrom::End(i64::from(offset)),
+    0 => {
+      // require offset to be 63 bit unsigned
+      let offset: u64 = offset.try_into()?;
+      io::SeekFrom::Start(offset)
+    }
+    1 => io::SeekFrom::Current(offset),
+    2 => io::SeekFrom::End(offset),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
