@@ -734,6 +734,7 @@ struct MakeTempArgs {
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
+  mode: Option<u32>,
 }
 
 fn op_make_temp_dir(
@@ -748,6 +749,7 @@ fn op_make_temp_dir(
     .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
+  let mode = args.mode.unwrap_or(0o700);
 
   state
     .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
@@ -762,6 +764,7 @@ fn op_make_temp_dir(
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
       suffix.as_ref().map(|x| &**x),
+      mode,
       true,
     )?;
     let path_str = path.to_str().unwrap();
@@ -782,6 +785,7 @@ fn op_make_temp_file(
     .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
+  let mode = args.mode.unwrap_or(0o600);
 
   state
     .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
@@ -796,6 +800,7 @@ fn op_make_temp_file(
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
       suffix.as_ref().map(|x| &**x),
+      mode,
       false,
     )?;
     let path_str = path.to_str().unwrap();
