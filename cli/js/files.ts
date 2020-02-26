@@ -21,6 +21,7 @@ import {
   OpenMode
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
+import { sync, datasync } from "./ops/fs/sync.ts";
 
 export function openSync(path: string, options?: OpenOptions): File;
 export function openSync(path: string, openMode?: OpenMode): File;
@@ -109,6 +110,14 @@ export class File
 
   close(): void {
     close(this.rid);
+  }
+
+  sync(): void {
+    sync(this.rid);
+  }
+
+  datasync(): void {
+    datasync(this.rid);
   }
 }
 
