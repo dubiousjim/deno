@@ -829,6 +829,8 @@ struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
   len: u64,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_truncate(
@@ -839,14 +841,21 @@ fn op_truncate(
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let len = args.len;
+  let create = args.create;
+  let create_new = args.create_new;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
-    f.set_len(len)?;
+    let mut open_options = std::fs::OpenOptions::new();
+    open_options
+      .create(create)
+      .create_new(create_new)
+      .write(true);
+    let file = open_options.open(&path)?;
+    file.set_len(len)?;
     Ok(json!({}))
   })
 }
