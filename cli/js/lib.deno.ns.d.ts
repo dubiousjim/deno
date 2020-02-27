@@ -1844,7 +1844,7 @@ declare namespace Deno {
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
    *
-   * Currently no-op on Windows.
+   * Currently NOOP on Windows. TODO Should throw on windows instead of silently succeeding.
    *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
