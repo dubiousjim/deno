@@ -31,7 +31,7 @@ jobs:
           # Use depth > 1, because sometimes we need to rebuild master and if
           # other commits have landed it will become impossible to rebuild if
           # the checkout is too shallow.
-          fetch-depth: 5
+          fetch-depth: 20
           submodules: true
 
       - name: Create source tarballs (release, linux)
