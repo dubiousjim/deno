@@ -449,6 +449,8 @@ struct CopyFileArgs {
   promise_id: Option<u64>,
   from: String,
   to: String,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_copy_file(
@@ -459,22 +461,64 @@ fn op_copy_file(
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = resolve_from_cwd(Path::new(&args.from))?;
   let to = resolve_from_cwd(Path::new(&args.to))?;
+  let create = args.create;
+  let create_new = args.create_new;
 
   state.check_read(&from)?;
   state.check_write(&to)?;
 
-  debug!("op_copy_file {} {}", from.display(), to.display());
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
-    // See https://github.com/rust-lang/rust/issues/54800
-    // Once the issue is resolved, we should remove this workaround.
-    if cfg!(unix) && !from.is_file() {
-      return Err(OpError::not_found("File not found".to_string()));
+    debug!("op_copy_file {} {}", from.display(), to.display());
+    if create && !create_new {
+      if cfg!(unix) {
+        // On *nix, Rust reports non-existent `from` as std::io::ErrorKind::InvalidInput
+        // See https://github.com/rust-lang/rust/issues/54800
+        // Once the issue is resolved, we should remove this check
+        std::fs::metadata(&from)?;
+      }
+      // default, most efficient version -- data never copied out of kernel space
+      // returns size of from as u64 (we ignore)
+      // NOTE: if `to` is a dangling symlink, this will create its target and "copy through" to it
+      // Python's shutil.copy and Node's fs.copyFileSync behave the same
+      // `cp -T` on the other hand will fail
+      std::fs::copy(&from, &to)?;
+    } else {
+      let mut from_file = std::fs::OpenOptions::new().read(true).open(&from)?;
+      let from_meta = from_file.metadata()?;
+      if cfg!(unix) && from_meta.is_dir() {
+        // when copyFile("dir", ...), prioritize "Is a directory" error for `from`
+        // over NotFound (from !create) or AlreadyExists (from createNew) errors for `to`
+        return Err(OpError::other("Is a directory (os error 21)".to_string()));
+      }
+      let mut open_options = std::fs::OpenOptions::new();
+      open_options
+        .truncate(true)
+        .create(create)
+        .create_new(create_new)
+        .write(true);
+      let mut to_file = match open_options.open(&to) {
+        Err(e)
+          if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
+        {
+          match std::fs::metadata(&to) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+              // `to` is dangling symlink
+              // we make copyFile behave the same as on its fast path
+              let mut open_options = std::fs::OpenOptions::new();
+              open_options.truncate(true).create(create).write(true);
+              open_options.open(to)?
+            }
+            _ => return Err(OpError::from(e)),
+          }
+        }
+        Err(e) => return Err(OpError::from(e)),
+        Ok(f) => f,
+      };
+      // returns size of from as u64 (we ignore)
+      std::io::copy(&mut from_file, &mut to_file)?;
+      to_file.set_permissions(from_meta.permissions())?;
     }
-
-    // returns size of from as u64 (we ignore)
-    std::fs::copy(&from, &to)?;
     Ok(json!({}))
   })
 }
