@@ -64,6 +64,7 @@ fn op_open(
     // if not specified, defaults to 0o666
     #[cfg(unix)]
     std_options.mode(_perm & 0o777);
+    // JIMW FAIL if perm set on Windows?
     tokio_fs::OpenOptions::from(std_options)
   } else {
     tokio_fs::OpenOptions::new()

@@ -628,7 +628,7 @@ declare namespace Deno {
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
      * It's an error to specify perm without also setting create or createNew to `true`.
-     * Does nothing/raises on Windows. */
+     * Does nothing/raises on Windows. JIMW */
     perm?: number;
   }
 
@@ -758,7 +758,7 @@ declare namespace Deno {
     recursive?: boolean;
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
-     * Does nothing/raises on Windows. */
+     * Does nothing/raises on Windows. JIMW */
     perm?: number;
   }
 
@@ -806,7 +806,7 @@ declare namespace Deno {
     suffix?: string;
     /** Permissions to use when creating the file or directory (defaults to
      * `0o700`, before the process's umask).
-     * Does nothing/raises on Windows. */
+     * Does nothing/raises on Windows. JIMW */
     perm?: number;
   }
 
@@ -1308,7 +1308,7 @@ declare namespace Deno {
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
      * It's an error to specify perm when create is set to `false`.
-     * Does nothing/raises on Windows. */
+     * Does nothing/raises on Windows. JIMW */
     perm?: number;
   }
 
@@ -1512,7 +1512,7 @@ declare namespace Deno {
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
      * It's an error to specify perm when create is set to `false`.
-     * Does nothing/raises on Windows. */
+     * Does nothing/raises on Windows. JIMW */
     perm?: number;
   }
 

@@ -383,7 +383,7 @@ export interface OpenOptions {
   /** Permissions to use if creating the file (defaults to `0o666`, before
    * the process's umask).
    * It's an error to specify perm without also setting create or createNew to `true`.
-   * Does nothing/raises on Windows. */
+   * Does nothing/raises on Windows. JIMW */
   perm?: number;
 }
 

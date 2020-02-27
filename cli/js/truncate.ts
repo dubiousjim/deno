@@ -16,7 +16,7 @@ export interface TruncateOptions {
   /** Permissions to use if creating the file (defaults to `0o666`, before
    * the process's umask).
    * It's an error to specify perm when create is set to `false`.
-   * Does nothing/raises on Windows. */
+   * Does nothing/raises on Windows. JIMW */
   perm?: number;
 }
 

@@ -90,6 +90,7 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  // JIMW FAIL if perm set on Windows?
   let perm = args.perm.unwrap_or(0o777);
 
   state.check_write(&path)?;
@@ -133,6 +134,7 @@ fn op_chmod(
       permissions.set_mode(perm);
       fs::set_permissions(&path, permissions)?;
     }
+    // JIMW FAIL on Windows? or NOOP?
     Ok(json!({}))
   })
 }
@@ -581,6 +583,7 @@ fn op_truncate(
       // if not specified, defaults to 0o666
       #[cfg(unix)]
       open_options.mode(_perm & 0o777);
+      // JIMW FAIL if perm set on Windows?
     }
     open_options
       .create(create)
@@ -614,6 +617,7 @@ fn op_make_temp_dir(
     .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
+  // JIMW FAIL if perm set on Windows?
   let perm = args.perm.unwrap_or(0o700);
 
   state
@@ -650,6 +654,7 @@ fn op_make_temp_file(
     .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
+  // JIMW FAIL if perm set on Windows?
   let perm = args.perm.unwrap_or(0o600);
 
   state

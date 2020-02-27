@@ -36,7 +36,7 @@ export interface MkdirOptions {
   recursive?: boolean;
   /** Permissions to use when creating the directory (defaults to `0o777`,
    * before the process's umask).
-   * Does nothing/raises on Windows. */
+   * Does nothing/raises on Windows. JIMW */
   perm?: number;
 }
 
