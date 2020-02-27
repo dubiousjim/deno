@@ -12,7 +12,7 @@ use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
 use std::fs;
-use std::io::SeekFrom;
+use std::io;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 use tokio;
@@ -203,9 +203,9 @@ fn op_seek(
   let whence = args.whence as u32;
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
-    0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
+    0 => io::SeekFrom::Start(offset as u64),
+    1 => io::SeekFrom::Current(i64::from(offset)),
+    2 => io::SeekFrom::End(i64::from(offset)),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
@@ -421,6 +421,8 @@ struct CopyFileArgs {
   promise_id: Option<u64>,
   from: String,
   to: String,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_copy_file(
@@ -431,6 +433,8 @@ fn op_copy_file(
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = deno_fs::resolve_from_cwd(Path::new(&args.from))?;
   let to = deno_fs::resolve_from_cwd(Path::new(&args.to))?;
+  let create = args.create;
+  let create_new = args.create_new;
 
   state.check_read(&from)?;
   state.check_write(&to)?;
@@ -445,8 +449,23 @@ fn op_copy_file(
       return Err(OpError::not_found("File not found".to_string()));
     }
 
-    // returns size of from as u64 (we ignore)
-    fs::copy(&from, &to)?;
+    if create && !create_new {
+      // default, most efficient version -- data never copied out of kernel space
+      // returns size of from as u64 (we ignore)
+      fs::copy(&from, &to)?;
+    } else {
+      let mut from_file = fs::OpenOptions::new().read(true).open(&from)?;
+      let mut open_options = fs::OpenOptions::new();
+      open_options
+        .create(create)
+        .create_new(create_new)
+        .write(true);
+      let mut to_file = open_options.open(&to)?;
+      let from_meta = from_file.metadata()?;
+      to_file.set_permissions(from_meta.permissions())?;
+      // returns size of from as u64 (we ignore)
+      io::copy(&mut from_file, &mut to_file)?;
+    }
     Ok(json!({}))
   })
 }
