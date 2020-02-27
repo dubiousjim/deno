@@ -7,8 +7,8 @@ function mkdirArgs(
   path: string,
   optionsOrRecursive?: MkdirOptions | boolean,
   perm?: number
-): { path: string; recursive: boolean; perm: number } {
-  const args = { path, recursive: false, perm: 0o777 };
+): { path: string; recursive: boolean; perm?: number } {
+  const args = { path, recursive: false };
   if (typeof optionsOrRecursive == "boolean") {
     args.recursive = optionsOrRecursive;
     if (perm) {
