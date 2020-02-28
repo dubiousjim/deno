@@ -393,8 +393,8 @@ declare namespace Deno {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
      * offset, interpreted according to `whence`: `SEEK_START` means relative
      * to the start of the file, `SEEK_CURRENT` means relative to the current
-     * offset, and `SEEK_END` means relative to the end. Seek resolves to the
-     * new offset relative to the start of the file.
+     * offset, and `SEEK_END` means relative to the end. Seek returns the new
+     * offset relative to the start of the file.
      *
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
@@ -806,7 +806,7 @@ declare namespace Deno {
      * directory's name. */
     suffix?: string;
     /** Permissions to use when creating the file or directory (defaults to
-     * `0o700`, before the process's umask).
+     * 0o700, before the process's umask).
      * Does nothing/raises on Windows. JIMW */
     perm?: number;
   }
@@ -1123,7 +1123,7 @@ declare namespace Deno {
 
   // @url js/read_dir.d.ts
 
-  /** Synchronously reads the directory given by `path` and returns an array of
+  /** Synchronously reads the directory given by path and returns an array of
    * `Deno.FileInfo`.
    *
    *       const files = Deno.readdirSync("/");
@@ -1133,7 +1133,7 @@ declare namespace Deno {
 
   /** UNSTABLE: Maybe need to return an `AsyncIterable`.
    *
-   * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
+   * Reads the directory given by path and resolves to an array of `Deno.FileInfo`.
    *
    *       const files = await Deno.readdir("/");
    *
@@ -1222,8 +1222,8 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function lstatSync(path: string): FileInfo;
 
-  /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
-   * follow symlinks.
+  /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always follow
+   * symlinks.
    *
    *       const fileInfo = await Deno.stat("hello.txt");
    *       assert(fileInfo.isFile());

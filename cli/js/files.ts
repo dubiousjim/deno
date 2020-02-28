@@ -227,7 +227,7 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
  * Returns the new position in the file (bytes from the start).
  *
  *       const file = Deno.openSync("/foo/bar.txt");
- *       const pos = Deno.seekSync(file.rid, 0, 0);
+ *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(
   rid: number,
@@ -243,7 +243,7 @@ export function seekSync(
  *
  *      (async () => {
  *        const file = await Deno.open("/foo/bar.txt");
- *        const pos = await Deno.seek(file.rid, 0, 0);
+ *        await Deno.seek(file.rid, 0, 0);
  *      })();
  */
 export async function seek(

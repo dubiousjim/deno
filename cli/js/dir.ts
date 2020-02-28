@@ -18,7 +18,7 @@ export function cwd(): string {
 /**
  * **UNSTABLE**: maybe needs permissions.
  *
- * Change the current working directory to the specified path.
+ * Change the current working directory to path.
  *
  * Throws `Deno.errors.NotFound` if directory not available.
  */

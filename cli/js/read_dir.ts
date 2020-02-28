@@ -15,7 +15,7 @@ function res(response: ReadDirResponse): FileInfo[] {
   );
 }
 
-/** Synchronously reads the directory given by `path` and returns an array of
+/** Synchronously reads the directory given by path and returns an array of
  * `Deno.FileInfo`.
  *
  *       const files = Deno.readdirSync("/");
@@ -27,7 +27,7 @@ export function readdirSync(path: string): FileInfo[] {
 
 /** UNSTABLE: Maybe need to return an `AsyncIterable`.
  *
- * Reads the directory given by `path` and resolves to an array of `Deno.FileInfo`.
+ * Reads the directory given by path and resolves to an array of `Deno.FileInfo`.
  *
  *       const files = await Deno.readdir("/");
  *

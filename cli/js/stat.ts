@@ -55,8 +55,8 @@ export function lstatSync(path: string): FileInfo {
   return new FileInfoImpl(res);
 }
 
-/** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
- * follow symlinks.
+/** Resolves to a `Deno.FileInfo` for the specified `path`. Will always follow
+ * symlinks.
  *
  *       const fileInfo = await Deno.stat("hello.txt");
  *       assert(fileInfo.isFile());
