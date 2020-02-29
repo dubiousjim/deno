@@ -189,6 +189,7 @@ unitTest(
     assert(s.rdev === null);
     assert(s.blksize === null);
     assert(s.blocks === null);
+    assert(s.anyModified === null);
   }
 );
 
@@ -213,5 +214,6 @@ unitTest(
     assert(s.rdev !== null);
     assert(s.blksize !== null);
     assert(s.blocks !== null);
+    assert(s.anyModified !== null);
   }
 );
