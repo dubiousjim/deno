@@ -6,6 +6,7 @@ class FileInfoMock implements Deno.FileInfo {
   size = -1;
   modified = -1;
   accessed = -1;
+  anyModified = -1;
   created = -1;
   name = "";
   dev = -1;
