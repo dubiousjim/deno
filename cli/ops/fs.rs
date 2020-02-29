@@ -482,6 +482,7 @@ fn get_stat_json(
 
   let mut json_val = json!({
     "isFile": metadata.is_file(),
+    "isDir": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
     // In seconds. Available on both Unix or Windows.
