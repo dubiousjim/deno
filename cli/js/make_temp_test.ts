@@ -34,7 +34,7 @@ unitTest(
     if (pathInfo.mode !== null) {
       // Skip windows
       // assertEquals(pathInfo.mode, 0o737 & ~Deno.umask());
-      assertEquals(pathInfo.mode & 0o777, 0o715); // assume umask 0o022
+      assertEquals(pathInfo.mode, 0o715); // assume umask 0o022
     }
   }
 );
@@ -113,7 +113,7 @@ unitTest(
     if (pathInfo.mode != null) {
       // Skip windows
       // assertEquals(pathInfo.mode, 0o626 & ~Deno.umask());
-      assertEquals(pathInfo.mode & 0o777, 0o604); // assume umask 0o022
+      assertEquals(pathInfo.mode, 0o604); // assume umask 0o022
     }
   }
 );

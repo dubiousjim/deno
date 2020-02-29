@@ -220,7 +220,7 @@ unitTest(
     assert(s.dev !== null);
     assert(s.ino !== null);
     // assertEquals(s.mode!, 0o626 & ~Deno.umask());
-    assertEquals(s.mode! & 0o777, 0o604); // assume umask 0o022
+    assertEquals(s.mode!, 0o604); // assume umask 0o022
     assertEquals(s.nlink, 2);
     assert(s.uid !== null);
     assert(s.gid !== null);

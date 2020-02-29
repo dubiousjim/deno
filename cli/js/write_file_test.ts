@@ -54,9 +54,9 @@ unitTest(
       const filename = Deno.makeTempDirSync() + "/test.txt";
       Deno.writeFileSync(filename, data, { mode: 0o626 });
       // assertEquals(Deno.statSync(filename).mode!, 0o626 & ~Deno.umask());
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o604); // assume umask 0o022
+      assertEquals(Deno.statSync(filename).mode!, 0o604); // assume umask 0o022
       Deno.writeFileSync(filename, data, { mode: 0o737 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o604);
+      assertEquals(Deno.statSync(filename).mode!, 0o604);
     }
   }
 );
@@ -171,9 +171,9 @@ unitTest(
       const filename = Deno.makeTempDirSync() + "/test.txt";
       await Deno.writeFile(filename, data, { mode: 0o626 });
       // assertEquals(Deno.statSync(filename).mode!, 0o626 & ~Deno.umask());
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o604); // assume umask 0o022
+      assertEquals(Deno.statSync(filename).mode!, 0o604); // assume umask 0o022
       await Deno.writeFile(filename, data, { mode: 0o737 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o604);
+      assertEquals(Deno.statSync(filename).mode!, 0o604);
     }
   }
 );
