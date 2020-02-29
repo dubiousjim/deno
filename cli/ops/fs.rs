@@ -561,7 +561,7 @@ macro_rules! to_seconds {
     // Unwrap is safe here as if the file is before the unix epoch
     // something is very wrong.
     $time
-      .and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
+      .and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64))
       .unwrap_or(0)
   }};
 }
@@ -592,7 +592,7 @@ fn get_stat_json(
     "isDirectory": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
-    // In seconds. Available on both Unix or Windows.
+    // In seconds (i64). Available on both Unix or Windows.
     "modified":to_seconds!(metadata.modified()),
     "accessed":to_seconds!(metadata.accessed()),
     "created":to_seconds!(metadata.created()),
