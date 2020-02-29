@@ -760,7 +760,7 @@ fn op_read_link(
 struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
-  len: u64,
+  len: i64,
   mode: Option<u32>,
   create: bool,
   create_new: bool,
@@ -773,7 +773,8 @@ fn op_truncate(
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
-  let len = args.len;
+  // require len to be 63 bit unsigned
+  let len: u64 = args.len.try_into()?;
   let create = args.create;
   let create_new = args.create_new;
 
