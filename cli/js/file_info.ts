@@ -5,6 +5,7 @@ import { build } from "./build.ts";
 export interface FileInfo {
   size: number;
   modified: number | null;
+  anyModified: number | null;
   accessed: number | null;
   created: number | null;
   name: string | null;
@@ -29,6 +30,7 @@ export class FileInfoImpl implements FileInfo {
   readonly #isSymlink: boolean;
   size: number;
   modified: number | null;
+  anyModified: number | null;
   accessed: number | null;
   created: number | null;
   name: string | null;
@@ -51,7 +53,18 @@ export class FileInfoImpl implements FileInfo {
     const created = res.created;
     const name = res.name;
     // Unix only
-    const { dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks } = res;
+    const {
+      ctime,
+      dev,
+      ino,
+      mode,
+      nlink,
+      uid,
+      gid,
+      rdev,
+      blksize,
+      blocks,
+    } = res;
 
     this.#isFile = res.isFile;
     this.#isDirectory = res.isDirectory;
@@ -62,6 +75,7 @@ export class FileInfoImpl implements FileInfo {
     this.created = created ? created : null;
     this.name = name ? name : null;
     // Only non-null if on Unix
+    this.anyModified = isUnix ? ctime : null;
     this.dev = isUnix ? dev : null;
     this.ino = isUnix ? ino : null;
     this.mode = isUnix ? mode : null;
