@@ -16,6 +16,7 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 use rand::{thread_rng, Rng};
+use utime::set_file_times;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -1074,7 +1075,7 @@ fn op_utime(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
-    utime::set_file_times(args.path, args.atime, args.mtime)?;
+    set_file_times(args.path, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
