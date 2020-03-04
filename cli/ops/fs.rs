@@ -23,6 +23,9 @@ use utime::set_file_times;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
+#[cfg(unix)]
+pub use std::os::unix::fs::symlink;
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -770,6 +773,7 @@ fn op_symlink(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
+  #[allow(unused)]
   let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
   let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
 
@@ -780,9 +784,11 @@ fn op_symlink(
   }
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&oldname, &newname)?;
+    {
+      debug!("op_symlink {} {}", oldname.display(), newname.display());
+      symlink(&oldname, &newname)?;
+    }
     Ok(json!({}))
   })
 }
