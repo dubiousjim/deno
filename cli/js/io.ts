@@ -102,7 +102,8 @@ export interface Seeker {
   /** Seek sets the offset for the next `read()` or `write()` to offset,
    * interpreted according to `whence`: `SEEK_START` means relative to the
    * start of the file, `SEEK_CURRENT` means relative to the current offset,
-   * and `SEEK_END` means relative to the end.
+   * and `SEEK_END` means relative to the end. Seek resolves to the new offset
+   * relative to the start of the file.
    *
    * Seeking to an offset before the start of the file is an error. Seeking to
    * any positive offset is legal, but the behavior of subsequent I/O operations
@@ -113,6 +114,16 @@ export interface Seeker {
 }
 
 export interface SyncSeeker {
+  /** Seek sets the offset for the next `readSync()` or `writeSync()` to
+   * offset, interpreted according to `whence`: `SEEK_START` means relative
+   * to the start of the file, `SEEK_CURRENT` means relative to the current
+   * offset, and `SEEK_END` means relative to the end. Seek returns the new
+   * offset relative to the start of the file.
+   *
+   * Seeking to an offset before the start of the file is an error. Seeking to
+   * any positive offset is legal, but the behavior of subsequent I/O
+   * operations on the underlying object is implementation-dependent.
+   */
   seekSync(offset: number, whence: SeekMode): number;
 }
 
