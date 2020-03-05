@@ -476,7 +476,8 @@ declare namespace Deno {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
      * offset, interpreted according to `whence`: `SEEK_START` means relative
      * to the start of the file, `SEEK_CURRENT` means relative to the current
-     * offset, and `SEEK_END` means relative to the end.
+     * offset, and `SEEK_END` means relative to the end. Seek resolves to the
+     * new offset relative to the start of the file.
      *
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
@@ -607,6 +608,8 @@ declare namespace Deno {
 
   /** Synchronously seek a file ID to the given offset under mode given by `whence`.
    *
+   * Returns the new position in the file (bytes from the start).
+   *
    *       const file = Deno.openSync("/foo/bar.txt");
    *       Deno.seekSync(file.rid, 0, 0);
    */
@@ -617,6 +620,8 @@ declare namespace Deno {
   ): number;
 
   /** Seek a file ID to the given offset under mode given by `whence`.
+   *
+   * Resolves to the new position in the file (bytes from the start).
    *
    *      const file = await Deno.open("/foo/bar.txt");
    *      await Deno.seek(file.rid, 0, 0);
