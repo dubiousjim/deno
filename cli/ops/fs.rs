@@ -55,7 +55,8 @@ struct OpenArgs {
   promise_id: Option<u64>,
   path: String,
   options: Option<OpenOptions>,
-  mode: Option<String>,
+  open_mode: Option<String>,
+  mode: Option<u32>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -78,7 +79,19 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
-  let mut open_options = tokio_fs::OpenOptions::new();
+  let gave_mode = args.mode.is_some();
+
+  let mut open_options = if let Some(_mode) = args.mode {
+    #[allow(unused_mut)]
+    let mut std_options = fs::OpenOptions::new();
+    // mode only used if creating the file on Unix
+    // if not specified, defaults to 0o666
+    #[cfg(unix)]
+    std_options.mode(_mode & 0o777);
+    tokio_fs::OpenOptions::from(std_options)
+  } else {
+    tokio_fs::OpenOptions::new()
+  };
 
   if let Some(options) = args.options {
     if options.read {
@@ -89,6 +102,12 @@ fn op_open(
       state.check_write(&path)?;
     }
 
+    if gave_mode && !(options.create || options.create_new) {
+      return Err(OpError::type_error(
+        "specified mode without allowing file creation".to_string(),
+      ));
+    }
+
     open_options
       .read(options.read)
       .create(options.create)
@@ -96,11 +115,16 @@ fn op_open(
       .truncate(options.truncate)
       .append(options.append)
       .create_new(options.create_new);
-  } else if let Some(mode) = args.mode {
-    let mode = mode.as_ref();
-    match mode {
+  } else if let Some(open_mode) = args.open_mode {
+    let open_mode = open_mode.as_ref();
+    match open_mode {
       "r" => {
         state.check_read(&path)?;
+        if gave_mode {
+          return Err(OpError::type_error(
+            "specified mode for read-only open".to_string(),
+          ));
+        }
       }
       "w" | "a" | "x" => {
         state.check_write(&path)?;
@@ -111,7 +135,7 @@ fn op_open(
       }
     };
 
-    match mode {
+    match open_mode {
       "r" => {
         open_options.read(true);
       }
@@ -147,7 +171,7 @@ fn op_open(
     }
   } else {
     return Err(OpError::other(
-      "Open requires either mode or options.".to_string(),
+      "Open requires either openMode or options.".to_string(),
     ));
   };
 
