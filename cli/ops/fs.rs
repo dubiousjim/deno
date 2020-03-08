@@ -435,9 +435,9 @@ fn op_copy_file(
   state.check_read(&from)?;
   state.check_write(&to)?;
 
-  debug!("op_copy_file {} {}", from.display(), to.display());
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
+    debug!("op_copy_file {} {}", from.display(), to.display());
     // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
