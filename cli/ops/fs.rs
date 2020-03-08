@@ -474,8 +474,8 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_remove {}", path.display());
     let metadata = fs::symlink_metadata(&path)?;
+    debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
