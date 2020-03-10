@@ -185,6 +185,20 @@ mod tests {
   use super::*;
 
   #[test]
+  fn test_set_permissions() {
+    let path: PathBuf =
+      make_temp(Option::None, Option::None, Option::None, false).unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(&path, perms).unwrap();
+    let mut f = File::open(&path).unwrap();
+    set_permissions(&mut f, 0o400).unwrap();
+    // verify that we didn't overwrite the read-only bits
+    let perms = std::fs::metadata(&path).unwrap().permissions();
+    assert_eq!(true, perms.readonly());
+  }
+
+  #[test]
   fn resolve_from_cwd_child() {
     let cwd = std::env::current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
