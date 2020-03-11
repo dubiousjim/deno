@@ -26,25 +26,34 @@ export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
  *
  *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
  *
- * Requires `allow-read` and `allow-write` permissions depending on mode.
+ * Requires `allow-read` and `allow-write` permissions depending on openMode.
  */
-export function openSync(path: string, mode?: OpenOptions): File;
-export function openSync(path: string, mode?: OpenMode): File;
+export function openSync(path: string, options?: OpenOptions): File;
+
+/** Synchronously open a file and return an instance of the `File` object.
+ *
+ *       const file = Deno.openSync("/foo/bar.txt", "r");
+ *
+ * Requires `allow-read` and `allow-write` permissions depending on openMode.
+ */
+export function openSync(path: string, openMode?: OpenMode): File;
+
+/**@internal*/
 export function openSync(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
-  let mode = undefined;
+  let openMode = undefined;
   let options = undefined;
 
   if (typeof modeOrOptions === "string") {
-    mode = modeOrOptions;
+    openMode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions as OpenOptions;
   }
 
-  const rid = opOpenSync(path, mode as OpenMode, options);
+  const rid = opOpenSync(path, openMode as OpenMode, options);
   return new File(rid);
 }
 
@@ -52,25 +61,34 @@ export function openSync(
  *
  *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
  *
- * Requires `allow-read` and `allow-write` permissions depending on mode.
+ * Requires `allow-read` and `allow-write` permissions depending on openMode.
  */
 export async function open(path: string, options?: OpenOptions): Promise<File>;
-export async function open(path: string, mode?: OpenMode): Promise<File>;
+
+/** Open a file and resolves to an instance of `Deno.File`.
+ *
+ *     const file = await Deno.open("/foo/bar.txt, "w+");
+ *
+ * Requires `allow-read` and `allow-write` permissions depending on openMode.
+ */
+export async function open(path: string, openMode?: OpenMode): Promise<File>;
+
+/**@internal*/
 export async function open(
   path: string,
   modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
-  let mode = undefined;
+  let openMode = undefined;
   let options = undefined;
 
   if (typeof modeOrOptions === "string") {
-    mode = modeOrOptions;
+    openMode = modeOrOptions;
   } else {
     checkOpenOptions(modeOrOptions);
     options = modeOrOptions as OpenOptions;
   }
 
-  const rid = await opOpen(path, mode as OpenMode, options);
+  const rid = await opOpen(path, openMode as OpenMode, options);
   return new File(rid);
 }
 
