@@ -584,7 +584,7 @@ fn op_remove(
       tokio::fs::remove_dir(&path).await?;
     }
     Ok(json!({}))
-  }
+  };
 
   if is_sync {
     let buf = futures::executor::block_on(fut)?;
@@ -593,16 +593,16 @@ fn op_remove(
     Ok(JsonOp::Async(fut.boxed_local()))
   }
   /*
-  blocking_json(is_sync, move || {
-    let metadata = fs::symlink_metadata(&path)?; // TOKIZE
+  Blocking_json(is_sync, move || {
+    let metadata = fs::symlink_metadata(&path)?;
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
-      fs::remove_file(&path)?; // TOKIZE
+      fs::remove_file(&path)?;
     } else if recursive {
-      remove_dir_all(&path)?; // TOKIZE
+      remove_dir_all(&path)?;
     } else {
-      fs::remove_dir(&path)?; // TOKIZE
+      fs::remove_dir(&path)?;
     }
     Ok(json!({}))
   })
