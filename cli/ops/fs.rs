@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-#![feature(async_closure)]
-use super::dispatch_json::{blocking_json, tokio_json, Deserialize, JsonOp, Value};
+use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
@@ -756,21 +755,8 @@ fn op_realpath(
 
   state.check_read(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  tokio_json(is_sync, async || {
-    debug!("op_realpath {}", path.display());
-    // corresponds to the realpath on Unix and
-    // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = tokio::fs::canonicalize(&path).await?;
-    let mut realpath_str =
-      realpath.to_str().unwrap().to_owned().replace("\\", "/");
-    if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
-    }
-    Ok(json!(realpath_str))
-  })
-  /*
   // op_realpath, notblocking_json
+  let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
@@ -784,13 +770,54 @@ fn op_realpath(
     Ok(json!(realpath_str))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
-  */
+  /*
+  blocking_json(is_sync, move || {
+    debug!("op_realpath {}", path.display());
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = fs::canonicalize(&path)?;
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
+    Ok(json!(realpath_str))
+  })
+   */
+  /*
+  tokio_json(is_sync, async || {
+    debug!("op_realpath {}", path.display());
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = tokio::fs::canonicalize(&path).await?;
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
+    Ok(json!(realpath_str))
+  })
+
+#[allow(dead_code)]
+pub fn tokio_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
+where
+  F: 'static + Send + FnOnce() -> JsonResult,
+{
+  let fut = async move { f() }.boxed_local();
+  if is_sync {
+    let result = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(result))
+  } else {
+    Ok(JsonOp::Async(fut))
+  }
+}
+   */
 }
 
 #[derive(Deserialize)]
