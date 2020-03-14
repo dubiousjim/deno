@@ -831,7 +831,7 @@ fn op_rename(
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
-      let open_options = fs::OpenOptions::new();
+      let mut open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       open_options.open(&newpath)?;
     }
