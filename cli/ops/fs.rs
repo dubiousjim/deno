@@ -26,6 +26,50 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 #[cfg(unix)]
 pub use std::os::unix::fs::symlink;
 
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, RawFd};
+
+#[cfg(unix)]
+use tokio;
+
+#[cfg(unix)]
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
+
+#[cfg(unix)]
+fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  Ok(OFlag::O_ACCMODE & flags)
+}
+
+#[cfg(unix)]
+pub fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+  let fd = file.as_raw_fd();
+  let mode = get_mode(fd)?;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-write flag".to_string(),
+    );
+    Err(ErrBox::from(e))
+  }
+}
+
+#[cfg(unix)]
+pub fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+  let fd = file.as_raw_fd();
+  let mode = get_mode(fd)?;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-read flag".to_string(),
+    );
+    Err(ErrBox::from(e))
+  }
+}
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
