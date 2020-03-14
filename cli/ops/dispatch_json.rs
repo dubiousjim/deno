@@ -103,3 +103,16 @@ where
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
+
+pub fn tokio_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
+where
+  F: 'static + Send + FnOnce() -> JsonResult,
+{
+  let fut = async move { f() }.boxed_local();
+  if is_sync() {
+    let result = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(result))
+  } else {
+    Ok(JsonOp::Async(fut))
+  }
+}
