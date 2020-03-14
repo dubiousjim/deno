@@ -5,65 +5,13 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-#[cfg(unix)]
-use crate::op_error::OpError;
 use deno_core::ErrBox;
 use rand;
 use rand::Rng;
 use walkdir::WalkDir;
 
 #[cfg(unix)]
-use nix::sys::stat::futimens;
-
-#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-
-#[cfg(unix)]
-use std::os::unix::io::{AsRawFd, RawFd};
-
-#[cfg(unix)]
-use tokio;
-
-#[cfg(unix)]
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
-
-#[cfg(unix)]
-use nix::sys::time::{TimeSpec, TimeValLike};
-
-#[cfg(unix)]
-fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
-  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-  let flags = OFlag::from_bits_truncate(flags);
-  Ok(OFlag::O_ACCMODE & flags)
-}
-
-#[cfg(unix)]
-pub fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
-  let fd = file.as_raw_fd();
-  let mode = get_mode(fd)?;
-  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
-    Ok(fd)
-  } else {
-    let e = OpError::permission_denied(
-      "run again with the --allow-write flag".to_string(),
-    );
-    Err(ErrBox::from(e))
-  }
-}
-
-#[cfg(unix)]
-pub fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
-  let fd = file.as_raw_fd();
-  let mode = get_mode(fd)?;
-  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
-    Ok(fd)
-  } else {
-    let e = OpError::permission_denied(
-      "run again with the --allow-read flag".to_string(),
-    );
-    Err(ErrBox::from(e))
-  }
-}
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -167,6 +115,12 @@ fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
 fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
 }
+
+#[cfg(unix)]
+use nix::sys::stat::futimens;
+
+#[cfg(unix)]
+use nix::sys::time::{TimeSpec, TimeValLike};
 
 #[cfg(unix)]
 pub fn fset_file_times(
