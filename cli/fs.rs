@@ -116,24 +116,6 @@ fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
 }
 
-#[cfg(unix)]
-use nix::sys::stat::futimens;
-
-#[cfg(unix)]
-use nix::sys::time::{TimeSpec, TimeValLike};
-
-#[cfg(unix)]
-pub fn fset_file_times(
-  fd: RawFd,
-  atime: u64,
-  mtime: u64,
-) -> Result<(), ErrBox> {
-  let atime = TimeSpec::seconds(atime as i64);
-  let mtime = TimeSpec::seconds(mtime as i64);
-  futimens(fd, &atime, &mtime).map_err(ErrBox::from)?;
-  Ok(())
-}
-
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///
