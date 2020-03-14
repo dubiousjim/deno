@@ -17,7 +17,7 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 use rand::{thread_rng, Rng};
-use remove_dir_all::remove_dir_all;
+// use remove_dir_all::remove_dir_all;
 use utime::set_file_times;
 
 #[cfg(unix)]
@@ -572,6 +572,27 @@ fn op_remove(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  let fut = async move {
+    let metadata = tokio::fs::symlink_metadata(&path).await?;
+    debug!("op_remove {} {}", path.display(), recursive);
+    let file_type = metadata.file_type();
+    if file_type.is_file() || file_type.is_symlink() {
+      tokio::fs::remove_file(&path).await?;
+    } else if recursive {
+      tokio::fs::remove_dir_all(&path).await?;
+    } else {
+      tokio::fs::remove_dir(&path).await?;
+    }
+    Ok(json!({}))
+  }
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+  /*
   blocking_json(is_sync, move || {
     let metadata = fs::symlink_metadata(&path)?; // TOKIZE
     debug!("op_remove {} {}", path.display(), recursive);
@@ -585,6 +606,7 @@ fn op_remove(
     }
     Ok(json!({}))
   })
+  */
 }
 
 #[derive(Deserialize)]
@@ -777,7 +799,7 @@ fn op_realpath(
     Ok(JsonOp::Async(fut.boxed_local()))
   }
   /*
-  blocking_json(is_sync, move || {
+  Blocking_json(is_sync, move || {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
