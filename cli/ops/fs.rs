@@ -839,7 +839,7 @@ struct ReadDirArgs {
   path: String,
 }
 
-use crate::tokio::stream::StreamExt;
+use tokio::stream::{self, StreamExt};
 
 fn op_read_dir(
   state: &State,
@@ -857,7 +857,7 @@ fn op_read_dir(
     let entries: Vec<_> = tokio::fs::read_dir(path).await?
       .filter_map(|entry| {
         let entry = entry.unwrap();
-        let metadata = entry.metadata().unwrap();
+        let metadata = entry.metadata().await.unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
         if let Some(filename) = entry.file_name().to_str() {
           let filename = Some(filename.to_owned());
@@ -866,7 +866,8 @@ fn op_read_dir(
           None
         }
       })
-      .collect();
+      .collect()
+      .await;
 
     Ok(json!({ "entries": entries }))
   };
