@@ -708,6 +708,7 @@ struct RenameArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  create_new: bool,
 }
 
 fn op_rename(
@@ -726,6 +727,11 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
+    if args.create_new {
+      let open_options = std::fs::OpenOptions::new();
+      open_options.write(true).create_new(true);
+      open_options.open(&newpath)?;
+    }
     fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
