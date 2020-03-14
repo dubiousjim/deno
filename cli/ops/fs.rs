@@ -757,7 +757,7 @@ fn op_realpath(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  tokio_json(is_sync, async move || {
+  tokio_json(is_sync, async || {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
