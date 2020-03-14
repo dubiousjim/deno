@@ -1087,6 +1087,12 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function remove(path: string, options?: RemoveOptions): Promise<void>;
 
+  export interface RenameOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. */
+    createNew?: boolean;
+  }
+
   /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
    * exists and is not a directory, `renameSync()` replaces it. OS-specific
    * restrictions may apply when `oldpath` and `newpath` are in different
@@ -1094,8 +1100,12 @@ declare namespace Deno {
    *
    *       Deno.renameSync("old/path", "new/path");
    *
-   * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+   * Requires `allow-read` and `allow-write` permission. */
+  export function renameSync(
+    oldpath: string,
+    newpath: string,
+    options?: RenameOptions
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`. If `newpath` already exists and is
    * not a directory, `rename()` replaces it. OS-specific restrictions may apply
@@ -1103,8 +1113,12 @@ declare namespace Deno {
    *
    *       await Deno.rename("old/path", "new/path");
    *
-   * Requires `allow-read` and `allow-write`. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+   * Requires `allow-read` and `allow-write` permission. */
+  export function rename(
+    oldpath: string,
+    newpath: string,
+    options?: RenameOptions
+  ): Promise<void>;
 
   /** Reads and returns the entire contents of a file.
    *
