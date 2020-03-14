@@ -109,7 +109,7 @@ where
   F: 'static + Send + FnOnce() -> JsonResult,
 {
   let fut = async move { f() }.boxed_local();
-  if is_sync() {
+  if is_sync {
     let result = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(result))
   } else {
