@@ -856,7 +856,7 @@ fn op_read_dir(
   let fut = async move {
     debug!("op_read_dir {}", path.display());
     let entries: Vec<_> = tokio::fs::read_dir(path).await?
-      .filter_map(async |entry| {
+      .filter_map(async move |entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().await.unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
