@@ -4,6 +4,7 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
+use std::io::ErrorKind; // make_temp and windows chown
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
@@ -13,10 +14,14 @@ use std;
 use std::convert::From;
 use std::convert::TryInto;
 use std::fs;
+use std::fs::{DirBuilder};
 use std::io;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 use tokio::fs as tokio_fs;
+
+use rand;
+use rand::Rng;
 
 use utime::set_file_times;
 
