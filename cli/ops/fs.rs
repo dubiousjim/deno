@@ -854,7 +854,7 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = tokio::fs::read_dir(path).await?
+    let entries: Vec<_> = tokio::fs::read_dir(path)
       .filter_map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().await.unwrap();
