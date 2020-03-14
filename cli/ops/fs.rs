@@ -4,7 +4,6 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
 use crate::fs as deno_fs;
 use crate::op_error::OpError;
-use std::io::ErrorKind; // make_temp and windows chown
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
@@ -14,8 +13,9 @@ use std;
 use std::convert::From;
 use std::convert::TryInto;
 use std::fs;
-use std::fs::{DirBuilder};
+use std::fs::DirBuilder;
 use std::io;
+use std::io::ErrorKind; // make_temp and windows chown
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio;
@@ -26,7 +26,7 @@ use rand::Rng;
 use utime::set_file_times;
 
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt};
+use std::os::unix::fs::DirBuilderExt;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -48,7 +48,9 @@ fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
 }
 
 #[cfg(unix)]
-pub fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+pub fn my_check_open_for_writing(
+  file: &tokio::fs::File,
+) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
@@ -62,7 +64,9 @@ pub fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox
 }
 
 #[cfg(unix)]
-pub fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+pub fn my_check_open_for_reading(
+  file: &tokio::fs::File,
+) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
@@ -429,7 +433,11 @@ fn set_dir_permissions(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
 }
 
-pub fn my_mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
+pub fn my_mkdir(
+  path: &Path,
+  mode: u32,
+  recursive: bool,
+) -> std::io::Result<()> {
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permissions(&mut builder, mode);
