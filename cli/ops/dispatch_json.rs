@@ -104,6 +104,7 @@ where
   }
 }
 
+#[allow(dead_code)]
 pub fn tokio_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
 where
   F: 'static + Send + FnOnce() -> JsonResult,
