@@ -25,9 +25,6 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use tokio;
 
 #[cfg(unix)]
-use nix::unistd::{chown as unix_chown, Gid, Uid};
-
-#[cfg(unix)]
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 #[cfg(unix)]
@@ -169,25 +166,6 @@ fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
 #[cfg(not(unix))]
 fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
-}
-
-#[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
-  let nix_uid = Uid::from_raw(uid);
-  let nix_gid = Gid::from_raw(gid);
-  unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(ErrBox::from)
-}
-
-#[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
-  // FAIL on Windows
-  // TODO: implement chown for Windows
-  let e = std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "Not implemented".to_string(),
-  );
-  Err(ErrBox::from(e))
 }
 
 #[cfg(unix)]
