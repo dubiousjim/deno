@@ -16,9 +16,9 @@ use std::convert::TryInto;
 use std::fs;
 use std::fs::{DirBuilder};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tokio::fs as tokio_fs;
+use tokio;
 
 use rand;
 use rand::Rng;
@@ -38,9 +38,6 @@ pub use std::os::unix::fs::symlink;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(unix)]
-use tokio;
-
-#[cfg(unix)]
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 #[cfg(unix)]
@@ -51,7 +48,7 @@ fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
 }
 
 #[cfg(unix)]
-pub fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+pub fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
@@ -65,7 +62,7 @@ pub fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
 }
 
 #[cfg(unix)]
-pub fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+pub fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
@@ -1168,7 +1165,7 @@ fn op_ftruncate(
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
     #[cfg(unix)]
-    deno_fs::check_open_for_writing(&file)?;
+    my_check_open_for_writing(&file)?;
     debug!("op_ftruncate {} {}", rid, len);
     file.set_len(len).await?;
     Ok(json!({}))
@@ -1220,7 +1217,7 @@ fn op_fchmod(
   let fut = async move {
     #[cfg(unix)]
     {
-      deno_fs::check_open_for_writing(&file)?;
+      my_check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
       let metadata = file.metadata().await?;
       let mut permissions = metadata.permissions();
@@ -1297,7 +1294,7 @@ fn op_futime(
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
-      let fd = deno_fs::check_open_for_writing(&file)?;
+      let fd = my_check_open_for_writing(&file)?;
       // require times to be 63 bit unsigned
       let atime: u64 = args.atime.try_into()?;
       let mtime: u64 = args.mtime.try_into()?;
@@ -1344,7 +1341,7 @@ fn op_fstat(
     {
       debug!("op_fstat {}", rid);
       #[allow(unused)]
-      let fd = deno_fs::check_open_for_reading(&file)?;
+      let fd = my_check_open_for_reading(&file)?;
       /*
       let filestat: nix::sys::stat::FileStat = deno_fs::fstat(fd)?;
       let sflag = deno_fs::SFlag::from_bits_truncate(filestat.st_mode);
