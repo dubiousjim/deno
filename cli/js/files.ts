@@ -24,6 +24,7 @@ export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { stat, statSync } from "./ops/fs/stat.ts";
 import { FileInfo } from "./file_info.ts";
+import { sync, datasync } from "./ops/fs/sync.ts";
 import { truncate, truncateSync } from "./ops/fs/truncate.ts";
 import { utime, utimeSync } from "./ops/fs/utime.ts";
 
@@ -117,11 +118,11 @@ export class File
   }
 
   sync(): void {
-    sendSyncJson("op_sync", { rid: this.rid });
+    sync(this.rid);
   }
 
   datasync(): void {
-    sendSyncJson("op_datasync", { rid: this.rid });
+    datasync(this.rid);
   }
 
   truncate(len?: number): Promise<void> {
