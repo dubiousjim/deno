@@ -20,8 +20,10 @@ use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use utime::set_file_times;
 
+/*
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, DirBuilderExt};
+*/
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, RawFd};
