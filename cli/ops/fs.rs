@@ -1161,6 +1161,26 @@ fn op_fchmod(
   }
 }
 
+///////
+#[cfg(unix)]
+use nix::sys::stat::futimens;
+
+#[cfg(unix)]
+use nix::sys::time::{TimeSpec, TimeValLike};
+
+#[cfg(unix)]
+pub fn fset_file_times(
+  fd: RawFd,
+  atime: u64,
+  mtime: u64,
+) -> Result<(), ErrBox> {
+  let atime = TimeSpec::seconds(atime as i64);
+  let mtime = TimeSpec::seconds(mtime as i64);
+  futimens(fd, &atime, &mtime).map_err(ErrBox::from)?;
+  Ok(())
+}
+///////
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FUtimeArgs {
@@ -1205,7 +1225,7 @@ fn op_futime(
       let atime: u64 = args.atime.try_into()?;
       let mtime: u64 = args.mtime.try_into()?;
       debug!("op_futime {} {} {}", rid, atime, mtime);
-      deno_fs::fset_file_times(fd, atime, mtime)?;
+      fset_file_times(fd, atime, mtime)?;
     }
     Ok(json!({}))
   })
