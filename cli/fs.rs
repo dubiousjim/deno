@@ -35,28 +35,23 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     .open(filename)?;
 
   if update_mode {
-    set_permissions(&mut file, mode)?;
+    #[cfg(unix)]
+    {
+      let mode = mode & 0o777;
+      debug!("set file mode to {:o}", mode);
+      let metadata = file.metadata()?;
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(mode);
+      file.set_permissions(permissions)
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
   }
 
   file.write_all(data.as_ref())
 }
 
-#[cfg(unix)]
-fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
-  let mode = mode & 0o777;
-  debug!("set file mode to {:o}", mode);
-  let metadata = file.metadata()?;
-  let mut permissions = metadata.permissions();
-  permissions.set_mode(mode);
-  file.set_permissions(permissions)
-}
-
-#[cfg(not(unix))]
-fn set_permissions(_file: &mut File, _mode: u32) -> std::io::Result<()> {
-  // NOOP on windows
-  Ok(())
-}
-
+// called from THISFILE, cli/test_runner.rs
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///
@@ -90,6 +85,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
   ret
 }
 
+// called from cli/flags.rs, cli/ops/{fs,permissions,plugins}.rs
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
@@ -149,6 +145,7 @@ mod tests {
   }
 }
 
+// called from cli/fmt.rs, cli/test_runner.rs
 pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
 where
   F: Fn(&Path) -> bool,

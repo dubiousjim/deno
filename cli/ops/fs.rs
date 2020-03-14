@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::dispatch_json::{blocking_json, tokio_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
@@ -228,6 +228,7 @@ fn op_open(
 
   let is_sync = args.promise_id.is_none();
 
+  // op_open, notblocking_json
   let fut = async move {
     let fs_file = open_options.open(path).await?;
     let mut state = state_.borrow_mut();
@@ -293,6 +294,7 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_seek, notblocking_json
   let fut = async move {
     debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
@@ -1159,6 +1161,7 @@ fn op_ftruncate(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_ftruncate, notblocking_json
   let fut = async move {
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
@@ -1212,6 +1215,7 @@ fn op_fchmod(
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_fchmod, notblocking_json
   let fut = async move {
     #[cfg(unix)]
     {
@@ -1334,6 +1338,7 @@ fn op_fstat(
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_fstat, notblocking_json
   let fut = async move {
     #[cfg(unix)]
     {
