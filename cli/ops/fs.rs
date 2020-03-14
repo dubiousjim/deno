@@ -23,6 +23,8 @@ use utime::set_file_times;
 /*
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, DirBuilderExt};
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::DirBuilderExt;
 */
 
 #[cfg(unix)]
@@ -138,7 +140,10 @@ fn op_open(
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
-    std_options.mode(mode & 0o777);
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      std_options.mode(mode & 0o777);
+    }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
     tokio::fs::OpenOptions::from(std_options)
@@ -1221,6 +1226,7 @@ fn op_fchmod(
   let fut = async move {
     #[cfg(unix)]
     {
+      use std::os::unix::fs::PermissionsExt;
       my_check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
       let metadata = file.metadata().await?;
