@@ -10,10 +10,10 @@ use walkdir::WalkDir;
 /*
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt};
+*/
 
 #[cfg(unix)]
 use std::os::unix::fs::{PermissionsExt};
-*/
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
