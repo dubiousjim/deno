@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-#![feature(async_closure)]
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
 use crate::fs::resolve_from_cwd;
@@ -840,8 +839,6 @@ struct ReadDirArgs {
   path: String,
 }
 
-use tokio::stream::{StreamExt};
-
 fn op_read_dir(
   state: &State,
   args: Value,
@@ -855,6 +852,20 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_read_dir {}", path.display());
+    let mut v = Vec::new();
+    let rd = tokio::fs::read_dir(path).await?;
+    let mut nx = rd.next_entry().await?;
+    while let Some(entry) = nx {
+      let metadata = entry.metadata.await.unwrap();
+      // Not all filenames can be encoded as UTF-8. Skip those for now.
+      if let Some(filename) = entry.file_name().to_str() {
+        let filename = Some(filename.to_owned());
+        v.push(get_stat_json(metadata, filename).unwrap());
+      }
+      nx = rd.next_entry().await?;
+    }
+
+    /*
     let entries: Vec<_> = tokio::fs::read_dir(path).await?
       .filter_map(async move |entry| {
         let entry = entry.unwrap();
@@ -869,8 +880,9 @@ fn op_read_dir(
       })
       .collect()
       .await;
+      */
 
-    Ok(json!({ "entries": entries }))
+    Ok(json!({ "entries": v }))
   };
 
   if is_sync {
