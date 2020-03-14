@@ -1,14 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+// use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
 use walkdir::WalkDir;
-
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -37,6 +34,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   if update_mode {
     #[cfg(unix)]
     {
+      use std::os::unix::fs::PermissionsExt;
       let mode = mode & 0o777;
       debug!("set file mode to {:o}", mode);
       let metadata = file.metadata()?;
