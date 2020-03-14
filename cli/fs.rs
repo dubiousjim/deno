@@ -60,62 +60,6 @@ fn set_permissions(_file: &mut File, _mode: u32) -> std::io::Result<()> {
   Ok(())
 }
 
-pub fn make_temp(
-  dir: Option<&Path>,
-  prefix: Option<&str>,
-  suffix: Option<&str>,
-  is_dir: bool,
-) -> std::io::Result<PathBuf> {
-  let prefix_ = prefix.unwrap_or("");
-  let suffix_ = suffix.unwrap_or("");
-  let mut buf: PathBuf = match dir {
-    Some(ref p) => p.to_path_buf(),
-    None => std::env::temp_dir(),
-  }
-  .join("_");
-  let mut rng = rand::thread_rng();
-  loop {
-    let unique = rng.gen::<u32>();
-    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
-    let r = if is_dir {
-      let mut builder = DirBuilder::new();
-      set_dir_permission(&mut builder, 0o700);
-      builder.create(buf.as_path())
-    } else {
-      let mut open_options = OpenOptions::new();
-      open_options.write(true).create_new(true);
-      #[cfg(unix)]
-      open_options.mode(0o600);
-      open_options.open(buf.as_path())?;
-      Ok(())
-    };
-    match r {
-      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
-      Ok(_) => return Ok(buf),
-      Err(e) => return Err(e),
-    }
-  }
-}
-
-pub fn mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
-  let mut builder = DirBuilder::new();
-  builder.recursive(recursive);
-  set_dir_permission(&mut builder, mode);
-  builder.create(path)
-}
-
-#[cfg(unix)]
-fn set_dir_permission(builder: &mut DirBuilder, mode: u32) {
-  let mode = mode & 0o777;
-  debug!("set dir mode to {:o}", mode);
-  builder.mode(mode);
-}
-
-#[cfg(not(unix))]
-fn set_dir_permission(_builder: &mut DirBuilder, _mode: u32) {
-  // NOOP on windows
-}
-
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///
