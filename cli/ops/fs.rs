@@ -839,7 +839,7 @@ struct ReadDirArgs {
   path: String,
 }
 
-use tokio::stream::{self, StreamExt};
+use tokio::stream::{StreamExt};
 
 fn op_read_dir(
   state: &State,
