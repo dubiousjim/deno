@@ -760,7 +760,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = tokio::fs::canonicalize(&path).await?;
+    let realpath = tokio::fs::canonicalize(&path);
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
