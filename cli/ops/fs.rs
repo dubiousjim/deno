@@ -26,6 +26,9 @@ use rand::Rng;
 use utime::set_file_times;
 
 #[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt};
+
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 #[cfg(unix)]
@@ -831,7 +834,7 @@ fn op_rename(
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
-      let open_options = std::fs::OpenOptions::new();
+      let open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       open_options.open(&newpath)?;
     }
@@ -1002,7 +1005,7 @@ pub fn my_make_temp(
       set_dir_permissions(&mut builder, 0o700);
       builder.create(buf.as_path())
     } else {
-      let mut open_options = OpenOptions::new();
+      let mut open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       #[cfg(unix)]
       open_options.mode(0o600);
