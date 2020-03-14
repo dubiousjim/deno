@@ -647,6 +647,7 @@ struct RenameArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  create_new: bool,
 }
 
 fn op_rename(
@@ -657,6 +658,7 @@ fn op_rename(
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let create_new = args.create_new;
 
   state.check_read(&oldpath)?;
   state.check_write(&oldpath)?;
@@ -665,6 +667,11 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
+    if create_new {
+      let mut open_options = std::fs::OpenOptions::new();
+      open_options.write(true).create_new(true);
+      open_options.open(&newpath)?;
+    }
     std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
