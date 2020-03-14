@@ -7,11 +7,6 @@ use std::path::{Component, Path, PathBuf};
 use deno_core::ErrBox;
 use walkdir::WalkDir;
 
-/*
-#[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt};
-*/
-
 #[cfg(unix)]
 use std::os::unix::fs::{PermissionsExt};
 
