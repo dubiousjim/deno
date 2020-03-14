@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std;
+use std::env::current_dir;
 use std::fs::{File, OpenOptions};
-// use std::io::Write;
+use std::io::{Write, Result as ioResult};
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
@@ -11,7 +11,7 @@ pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
   mode: u32,
-) -> std::io::Result<()> {
+) -> ioResult<()> {
   write_file_2(filename, data, true, mode, true, false)
 }
 
@@ -22,7 +22,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   mode: u32,
   is_create: bool,
   is_append: bool,
-) -> std::io::Result<()> {
+) -> ioResult<()> {
   let mut file = OpenOptions::new()
     .read(false)
     .write(true)
@@ -88,7 +88,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     cwd.join(path)
   };
 
@@ -101,19 +101,19 @@ mod tests {
 
   #[test]
   fn resolve_from_cwd_child() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
