@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std::env::current_dir;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Write, Result as ioResult};
 use std::path::{Component, Path, PathBuf};
 
