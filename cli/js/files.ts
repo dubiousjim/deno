@@ -21,11 +21,11 @@ import {
   OpenMode
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
-import { truncate, truncateSync } from "./ops/fs/truncate.ts";
 import { chmod, chmodSync } from "./ops/fs/chmod.ts";
-import { utime, utimeSync } from "./ops/fs/utime.ts";
 import { stat, statSync } from "./ops/fs/stat.ts";
 import { FileInfo } from "./file_info.ts";
+import { truncate, truncateSync } from "./ops/fs/truncate.ts";
+import { utime, utimeSync } from "./ops/fs/utime.ts";
 
 export function openSync(path: string, options?: OpenOptions): File;
 export function openSync(path: string, openMode?: OpenMode): File;
