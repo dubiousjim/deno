@@ -756,11 +756,11 @@ fn op_realpath(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  tokio_json(is_sync, move || {
+  tokio_json(is_sync, async move || {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = tokio::fs::canonicalize(&path);
+    let realpath = tokio::fs::canonicalize(&path).await?;
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
