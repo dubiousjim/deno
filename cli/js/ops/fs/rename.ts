@@ -50,6 +50,6 @@ function checkOptions(options: RenameOptions): RenameArgs {
     createNew = true;
   }
   return {
-    createNew: !!createNew,
+    createNew: !!createNew
   };
 }
