@@ -675,9 +675,9 @@ fn get_stat_json(
     }};
   }
 
+  #[cfg(unix)]
+  use std::os::unix::fs::MetadataExt;
   let mut json_val = json!({
-    #[cfg(unix)]
-    use std::os::unix::fs::MetadataExt;
     "isFile": metadata.is_file(),
     "isDir": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
@@ -975,7 +975,10 @@ fn op_truncate(
       // mode only used if creating the file on Unix
       // if not specified, defaults to 0o666
       #[cfg(unix)]
-      open_options.mode(_mode & 0o777);
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(_mode & 0o777);
+      }
     }
     open_options
       .create(create)
@@ -1013,7 +1016,10 @@ pub fn my_make_temp(
       let mut open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       #[cfg(unix)]
-      open_options.mode(0o600);
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(0o600);
+      }
       open_options.open(buf.as_path())?;
       Ok(())
     };
