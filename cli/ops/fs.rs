@@ -856,7 +856,7 @@ fn op_read_dir(
     let rd = tokio::fs::read_dir(path).await?;
     let mut nx = rd.next_entry().await?;
     while let Some(entry) = nx {
-      let metadata = entry.metadata.await.unwrap();
+      let metadata = entry.metadata().await.unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
       if let Some(filename) = entry.file_name().to_str() {
         let filename = Some(filename.to_owned());
