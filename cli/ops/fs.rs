@@ -1,38 +1,29 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::dispatch_json::{blocking_json, /*tokio_json,*/ Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::fs as deno_fs;
+use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
-use remove_dir_all::remove_dir_all;
-use std;
-use std::convert::From;
-use std::convert::TryInto;
+use std::convert::{From, TryInto};
+use std::env;
 use std::fs;
-use std::fs::DirBuilder;
-use std::io;
-use std::io::ErrorKind; // make_temp and windows chown
+use std::io; // io::{Result, Error, SeekFrom, copy} and io::ErrorKind (make_temp and windows chown)
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio;
 
-use rand;
-use rand::Rng;
-
+use rand::{thread_rng, Rng};
+use remove_dir_all::remove_dir_all;
 use utime::set_file_times;
 
+/*
 #[cfg(unix)]
-use std::os::unix::fs::DirBuilderExt;
-
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-
-#[cfg(unix)]
-pub use std::os::unix::fs::symlink;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, DirBuilderExt};
+*/
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -137,7 +128,7 @@ fn op_open(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
 
   let mut open_options = if let Some(mode) = args.mode {
@@ -146,7 +137,10 @@ fn op_open(
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
-    std_options.mode(mode & 0o777);
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      std_options.mode(mode & 0o777);
+    }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
     tokio::fs::OpenOptions::from(std_options)
@@ -227,6 +221,7 @@ fn op_open(
 
   let is_sync = args.promise_id.is_none();
 
+  // op_open, notblocking_json
   let fut = async move {
     let fs_file = open_options.open(path).await?;
     let mut state = state_.borrow_mut();
@@ -295,6 +290,7 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_seek, notblocking_json
   let fut = async move {
     debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
@@ -407,20 +403,21 @@ fn op_chdir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  std::env::set_current_dir(&args.directory)?;
+  env::set_current_dir(&args.directory)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
 ///////////
 #[cfg(unix)]
-fn set_dir_permissions(builder: &mut DirBuilder, mode: u32) {
+fn set_dir_permissions(builder: &mut fs::DirBuilder, mode: u32) {
+  use std::os::unix::fs::DirBuilderExt;
   let mode = mode & 0o777;
   debug!("set dir mode to {:o}", mode);
   builder.mode(mode);
 }
 
 #[cfg(not(unix))]
-fn set_dir_permissions(_builder: &mut DirBuilder, _mode: u32) {
+fn set_dir_permissions(_builder: &mut fs::DirBuilder, _mode: u32) {
   // NOOP on windows
 }
 
@@ -428,8 +425,8 @@ pub fn my_mkdir(
   path: &Path,
   mode: u32,
   recursive: bool,
-) -> std::io::Result<()> {
-  let mut builder = DirBuilder::new();
+) -> io::Result<()> {
+  let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permissions(&mut builder, mode);
   builder.create(path)
@@ -451,7 +448,7 @@ fn op_mkdir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
   let mode = args.mode.unwrap_or(0o777);
 
   state.check_write(&path)?;
@@ -478,7 +475,7 @@ fn op_chmod(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
   #[allow(unused)]
   let mode = args.mode & 0o777;
 
@@ -490,6 +487,7 @@ fn op_chmod(
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
+      use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
@@ -515,8 +513,8 @@ pub fn my_chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
 pub fn my_chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   // FAIL on Windows
   // TODO: implement chown for Windows
-  let e = std::io::Error::new(
-    std::io::ErrorKind::Other,
+  let e = io::Error::new(
+    io::ErrorKind::Other,
     "Not implemented".to_string(),
   );
   Err(ErrBox::from(e))
@@ -538,7 +536,7 @@ fn op_chown(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
 
   state.check_write(&path)?;
 
@@ -564,7 +562,7 @@ fn op_remove(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: RemoveArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
   let recursive = args.recursive;
 
   state.check_write(&path)?;
@@ -601,8 +599,8 @@ fn op_copy_file(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
-  let from = deno_fs::resolve_from_cwd(Path::new(&args.from))?;
-  let to = deno_fs::resolve_from_cwd(Path::new(&args.to))?;
+  let from = resolve_from_cwd(Path::new(&args.from))?;
+  let to = resolve_from_cwd(Path::new(&args.to))?;
   let create = args.create;
   let create_new = args.create_new;
 
@@ -612,7 +610,7 @@ fn op_copy_file(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_copy_file {} {}", from.display(), to.display());
-    // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
+    // On *nix, Rust reports non-existent `from` as io::ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
@@ -669,6 +667,8 @@ fn get_stat_json(
     }};
   }
 
+  #[cfg(unix)]
+  use std::os::unix::fs::MetadataExt;
   let mut json_val = json!({
     "isFile": metadata.is_file(),
     "isDir": metadata.is_dir(),
@@ -717,7 +717,7 @@ fn op_stat(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: StatArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
   let lstat = args.lstat;
 
   state.check_read(&path)?;
@@ -747,7 +747,7 @@ fn op_realpath(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: RealpathArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
 
   state.check_read(&path)?;
 
@@ -779,7 +779,7 @@ fn op_read_dir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
 
   state.check_read(&path)?;
 
@@ -819,8 +819,8 @@ fn op_rename(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: RenameArgs = serde_json::from_value(args)?;
-  let oldpath = deno_fs::resolve_from_cwd(Path::new(&args.oldpath))?;
-  let newpath = deno_fs::resolve_from_cwd(Path::new(&args.newpath))?;
+  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
+  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
 
   state.check_read(&oldpath)?;
   state.check_write(&oldpath)?;
@@ -853,8 +853,8 @@ fn op_link(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: LinkArgs = serde_json::from_value(args)?;
-  let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
-  let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
+  let oldname = resolve_from_cwd(Path::new(&args.oldname))?;
+  let newname = resolve_from_cwd(Path::new(&args.newname))?;
 
   state.check_read(&oldname)?;
   state.check_write(&newname)?;
@@ -882,8 +882,8 @@ fn op_symlink(
 ) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
   #[allow(unused)]
-  let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
-  let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
+  let oldname = resolve_from_cwd(Path::new(&args.oldname))?;
+  let newname = resolve_from_cwd(Path::new(&args.newname))?;
 
   state.check_write(&newname)?;
   // TODO Use type for Windows.
@@ -894,6 +894,7 @@ fn op_symlink(
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
+      use std::os::unix::fs::symlink;
       debug!("op_symlink {} {}", oldname.display(), newname.display());
       symlink(&oldname, &newname)?;
     }
@@ -914,7 +915,7 @@ fn op_read_link(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
 
   state.check_read(&path)?;
 
@@ -945,7 +946,7 @@ fn op_truncate(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
-  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(Path::new(&args.path))?;
   // require len to be 63 bit unsigned
   let len: u64 = args.len.try_into()?;
   let create = args.create;
@@ -966,7 +967,10 @@ fn op_truncate(
       // mode only used if creating the file on Unix
       // if not specified, defaults to 0o666
       #[cfg(unix)]
-      open_options.mode(_mode & 0o777);
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(_mode & 0o777);
+      }
     }
     open_options
       .create(create)
@@ -984,32 +988,35 @@ pub fn my_make_temp(
   prefix: Option<&str>,
   suffix: Option<&str>,
   is_dir: bool,
-) -> std::io::Result<PathBuf> {
+) -> io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
   let mut buf: PathBuf = match dir {
     Some(ref p) => p.to_path_buf(),
-    None => std::env::temp_dir(),
+    None => env::temp_dir(),
   }
   .join("_");
-  let mut rng = rand::thread_rng();
+  let mut rng = thread_rng();
   loop {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     let r = if is_dir {
-      let mut builder = DirBuilder::new();
+      let mut builder = fs::DirBuilder::new();
       set_dir_permissions(&mut builder, 0o700);
       builder.create(buf.as_path())
     } else {
       let mut open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       #[cfg(unix)]
-      open_options.mode(0o600);
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(0o600);
+      }
       open_options.open(buf.as_path())?;
       Ok(())
     };
     match r {
-      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
+      Err(ref e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
       Ok(_) => return Ok(buf),
       Err(e) => return Err(e),
     }
@@ -1035,12 +1042,12 @@ fn op_make_temp_dir(
 
   let dir = args
     .dir
-    .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
+    .map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
   state
-    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
+    .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -1069,12 +1076,12 @@ fn op_make_temp_file(
 
   let dir = args
     .dir
-    .map(|s| deno_fs::resolve_from_cwd(Path::new(&s)).unwrap());
+    .map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
   state
-    .check_write(dir.clone().unwrap_or_else(std::env::temp_dir).as_path())?;
+    .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -1126,7 +1133,7 @@ fn op_cwd(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let path = std::env::current_dir()?;
+  let path = env::current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
 }
@@ -1160,6 +1167,7 @@ fn op_ftruncate(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_ftruncate, notblocking_json
   let fut = async move {
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
@@ -1213,9 +1221,11 @@ fn op_fchmod(
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_fchmod, notblocking_json
   let fut = async move {
     #[cfg(unix)]
     {
+      use std::os::unix::fs::PermissionsExt;
       my_check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
       let metadata = file.metadata().await?;
@@ -1335,6 +1345,7 @@ fn op_fstat(
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // op_fstat, notblocking_json
   let fut = async move {
     #[cfg(unix)]
     {

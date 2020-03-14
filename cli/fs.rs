@@ -1,20 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std;
-use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::env::current_dir;
+use std::fs::OpenOptions;
+use std::io::{Write, Result as ioResult};
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
 use walkdir::WalkDir;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
   data: T,
   mode: u32,
-) -> std::io::Result<()> {
+) -> ioResult<()> {
   write_file_2(filename, data, true, mode, true, false)
 }
 
@@ -25,7 +22,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   mode: u32,
   is_create: bool,
   is_append: bool,
-) -> std::io::Result<()> {
+) -> ioResult<()> {
   let mut file = OpenOptions::new()
     .read(false)
     .write(true)
@@ -35,26 +32,21 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     .open(filename)?;
 
   if update_mode {
-    set_permissions(&mut file, mode)?;
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let mode = mode & 0o777;
+      debug!("set file mode to {:o}", mode);
+      let metadata = file.metadata()?;
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(mode);
+      file.set_permissions(permissions)?;
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
   }
 
   file.write_all(data.as_ref())
-}
-
-#[cfg(unix)]
-fn set_permissions(file: &mut File, mode: u32) -> std::io::Result<()> {
-  let mode = mode & 0o777;
-  debug!("set file mode to {:o}", mode);
-  let metadata = file.metadata()?;
-  let mut permissions = metadata.permissions();
-  permissions.set_mode(mode);
-  file.set_permissions(permissions)
-}
-
-#[cfg(not(unix))]
-fn set_permissions(_file: &mut File, _mode: u32) -> std::io::Result<()> {
-  // NOOP on windows
-  Ok(())
 }
 
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
@@ -94,7 +86,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     cwd.join(path)
   };
 
@@ -107,19 +99,19 @@ mod tests {
 
   #[test]
   fn resolve_from_cwd_child() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
