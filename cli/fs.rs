@@ -40,7 +40,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
       let metadata = file.metadata()?;
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
-      file.set_permissions(permissions);
+      file.set_permissions(permissions)?;
     }
     #[cfg(not(unix))]
     let _ = mode;
@@ -49,7 +49,6 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   file.write_all(data.as_ref())
 }
 
-// called from THISFILE, cli/test_runner.rs
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///
@@ -83,7 +82,6 @@ pub fn normalize_path(path: &Path) -> PathBuf {
   ret
 }
 
-// called from cli/flags.rs, cli/ops/{fs,permissions,plugins}.rs
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
@@ -143,7 +141,6 @@ mod tests {
   }
 }
 
-// called from cli/fmt.rs, cli/test_runner.rs
 pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
 where
   F: Fn(&Path) -> bool,
