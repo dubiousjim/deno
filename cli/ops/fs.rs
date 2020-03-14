@@ -23,8 +23,6 @@ use utime::set_file_times;
 /*
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, DirBuilderExt};
-use std::os::unix::fs::MetadataExt;
-use std::os::unix::fs::DirBuilderExt;
 */
 
 #[cfg(unix)]
@@ -421,6 +419,7 @@ fn op_chdir(
 ///////////
 #[cfg(unix)]
 fn set_dir_permissions(builder: &mut fs::DirBuilder, mode: u32) {
+  use std::os::unix::fs::DirBuilderExt;
   let mode = mode & 0o777;
   debug!("set dir mode to {:o}", mode);
   builder.mode(mode);
@@ -677,6 +676,8 @@ fn get_stat_json(
   }
 
   let mut json_val = json!({
+    #[cfg(unix)]
+    use std::os::unix::fs::MetadataExt;
     "isFile": metadata.is_file(),
     "isDir": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
