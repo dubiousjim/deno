@@ -745,6 +745,7 @@ struct RealpathArgs {
   path: String,
 }
 
+#[feature(async_closure)]
 fn op_realpath(
   state: &State,
   args: Value,
