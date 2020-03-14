@@ -852,35 +852,17 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_read_dir {}", path.display());
-    let mut v = Vec::new();
-    let mut rd = tokio::fs::read_dir(path).await?;
-    while let Some(entry) = rd.next_entry().await? {
+    let mut entries = Vec::new();
+    let mut stream = tokio::fs::read_dir(path).await?;
+    while let Some(entry) = stream.next_entry().await? {
       let metadata = entry.metadata().await.unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
       if let Some(filename) = entry.file_name().to_str() {
         let filename = Some(filename.to_owned());
-        v.push(get_stat_json(metadata, filename).unwrap());
+        entries.push(get_stat_json(metadata, filename).unwrap());
       }
     }
-
-    /*
-    let entries: Vec<_> = tokio::fs::read_dir(path).await?
-      .filter_map(async move |entry| {
-        let entry = entry.unwrap();
-        let metadata = entry.metadata().await.unwrap();
-        // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Some(filename) = entry.file_name().to_str() {
-          let filename = Some(filename.to_owned());
-          Some(get_stat_json(metadata, filename).unwrap())
-        } else {
-          None
-        }
-      })
-      .collect()
-      .await;
-      */
-
-    Ok(json!({ "entries": v }))
+    Ok(json!({ "entries": entries }))
   };
 
   if is_sync {
