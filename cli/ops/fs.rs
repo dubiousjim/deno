@@ -227,7 +227,6 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-
   // op_open, notblocking_json
   let fut = async move {
     let fs_file = open_options.open(path).await?;
@@ -294,6 +293,7 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   // op_seek, notblocking_json
   let fut = async move {
     debug!("op_seek {} {} {}", rid, offset, whence);
@@ -301,7 +301,7 @@ fn op_seek(
     Ok(json!(pos))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
@@ -458,6 +458,7 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     my_mkdir(&path, mode, args.recursive)?;
@@ -486,6 +487,7 @@ fn op_chmod(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?; // TOKIZE
@@ -545,6 +547,7 @@ fn op_chown(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
     my_chown(args.path.as_ref(), args.uid, args.gid)?;
@@ -619,6 +622,7 @@ fn op_copy_file(
   state.check_write(&to)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_copy_file {} {}", from.display(), to.display());
     // On *nix, Rust reports non-existent `from` as io::ErrorKind::InvalidInput
@@ -734,6 +738,7 @@ fn op_stat(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
@@ -834,6 +839,8 @@ struct ReadDirArgs {
   path: String,
 }
 
+use crate::tokio::stream::StreamExt;
+
 fn op_read_dir(
   state: &State,
   args: Value,
@@ -895,6 +902,7 @@ fn op_rename(
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
@@ -928,6 +936,7 @@ fn op_link(
   state.check_write(&newname)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldname.display(), newname.display());
     fs::hard_link(&oldname, &newname)?; // TOKIZE
@@ -959,6 +968,7 @@ fn op_symlink(
     return Err(OpError::other("Not implemented".to_string()));
   }
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
@@ -988,6 +998,7 @@ fn op_read_link(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
     let path = fs::read_link(&path)?; // TOKIZE
@@ -1023,6 +1034,7 @@ fn op_truncate(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
     let mut open_options = fs::OpenOptions::new(); // TOKIZE
@@ -1118,6 +1130,7 @@ fn op_make_temp_dir(
     .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1152,6 +1165,7 @@ fn op_make_temp_file(
     .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1188,7 +1202,9 @@ fn op_utime(
   // require times to be 63 bit unsigned
   let atime: u64 = args.atime.try_into()?;
   let mtime: u64 = args.mtime.try_into()?;
+
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, atime, mtime);
     set_file_times(args.path, atime, mtime)?;
@@ -1235,6 +1251,7 @@ fn op_ftruncate(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   // op_ftruncate, notblocking_json
   let fut = async move {
     // Unix returns InvalidInput if fd was not opened for writing
@@ -1246,7 +1263,7 @@ fn op_ftruncate(
     Ok(json!({}))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
@@ -1289,6 +1306,7 @@ fn op_fchmod(
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   // op_fchmod, notblocking_json
   let fut = async move {
     #[cfg(unix)]
@@ -1304,7 +1322,7 @@ fn op_fchmod(
     Ok(json!({}))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
@@ -1367,7 +1385,9 @@ fn op_futime(
   };
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
+
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
@@ -1413,6 +1433,7 @@ fn op_fstat(
   #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   // op_fstat, notblocking_json
   let fut = async move {
     #[cfg(unix)]
@@ -1460,7 +1481,7 @@ fn op_fstat(
     Ok(json!({}))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
