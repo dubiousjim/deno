@@ -21,10 +21,10 @@ import {
   OpenMode
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
-import { truncate, truncateSync } from "./truncate.ts";
-import { chmod, chmodSync } from "./chmod.ts";
-import { utime, utimeSync } from "./utime.ts";
-import { stat, statSync } from "./stat.ts";
+import { truncate, truncateSync } from "./ops/fs/truncate.ts";
+import { chmod, chmodSync } from "./ops/fs/chmod.ts";
+import { utime, utimeSync } from "./ops/fs/utime.ts";
+import { stat, statSync } from "./ops/fs/stat.ts";
 import { FileInfo } from "./file_info.ts";
 
 /** Synchronously open a file and return an instance of the `File` object.
