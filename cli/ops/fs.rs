@@ -592,21 +592,6 @@ fn op_remove(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
-  /*
-  Blocking_json(is_sync, move || {
-    let metadata = fs::symlink_metadata(&path)?;
-    debug!("op_remove {} {}", path.display(), recursive);
-    let file_type = metadata.file_type();
-    if file_type.is_file() || file_type.is_symlink() {
-      fs::remove_file(&path)?;
-    } else if recursive {
-      remove_dir_all(&path)?;
-    } else {
-      fs::remove_dir(&path)?;
-    }
-    Ok(json!({}))
-  })
-  */
 }
 
 #[derive(Deserialize)]
@@ -860,9 +845,9 @@ fn op_read_dir(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = fs::read_dir(path)? // TOKIZE
+    let entries: Vec<_> = tokio::fs::read_dir(path).await?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
@@ -877,7 +862,14 @@ fn op_read_dir(
       .collect();
 
     Ok(json!({ "entries": entries }))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
