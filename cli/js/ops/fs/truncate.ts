@@ -2,6 +2,9 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 export interface TruncateOptions {
+  createNew?: boolean;
+  clobber?: boolean;
+  create?: boolean;
   mode?: number;
 }
 
@@ -17,20 +20,89 @@ function coerceLen(len?: number): number {
   return len;
 }
 
+interface TruncateArgs {
+  createNew: boolean;
+  create: boolean;
+  mode?: number;
+  path?: string;
+  len?: number;
+}
+
 export function truncateSync(
   path: string,
   len?: number,
+  options?: TruncateOptions
+): void;
+
+export function truncateSync(rid: number, len?: number): void;
+
+export function truncateSync(
+  path: string | number,
+  len?: number,
   options: TruncateOptions = {}
 ): void {
-  const args = { path, len: coerceLen(len), mode: options.mode };
-  sendSync("op_truncate", args);
+  if (typeof path == "string") {
+    const args = checkOptions(options);
+    args.path = path;
+    args.len = coerceLen(len);
+    sendSync("op_truncate", args);
+  } else {
+    // for the ftruncate variant, we ignore the create option
+    const args = { rid: path, len: coerceLen(len), mode: options.mode };
+    sendSync("op_ftruncate", args);
+  }
 }
 
-export async function truncate(
+export function truncate(
   path: string,
+  len?: number,
+  options?: TruncateOptions
+): Promise<void>;
+
+export function truncate(rid: number, len?: number): Promise<void>;
+
+export async function truncate(
+  path: string | number,
   len?: number,
   options: TruncateOptions = {}
 ): Promise<void> {
-  const args = { path, len: coerceLen(len), mode: options.mode };
-  await sendAsync("op_truncate", args);
+  if (typeof path == "string") {
+    const args = checkOptions(options);
+    args.path = path;
+    args.len = coerceLen(len);
+    await sendAsync("op_truncate", args);
+  } else {
+    // for the ftruncate variant, we ignore the create option
+    const args = { rid: path, len: coerceLen(len), mode: options.mode };
+    await sendAsync("op_ftruncate", args);
+  }
+}
+
+/** Check we have a valid combination of options.
+ *  @internal
+ */
+function checkOptions(options: TruncateOptions): TruncateArgs {
+  let createNew = options.createNew;
+  const create = options.create;
+  if (options.clobber) {
+    if (createNew) {
+      throw new Error("'clobber' option incompatible with 'createNew' option");
+    }
+  } else if (options.clobber === false) {
+    if (create !== false) {
+      if (createNew === false) {
+        throw new Error("one of options 'clobber' or 'createNew' is implied");
+      }
+      createNew = true;
+    } else if (!createNew) {
+      throw new Error(
+        "one of 'clobber', 'create', or 'createNew' options is required"
+      );
+    }
+  }
+  return {
+    ...options,
+    createNew: !!createNew,
+    create: createNew || create !== false
+  };
 }
