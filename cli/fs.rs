@@ -42,7 +42,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
       let metadata = file.metadata()?;
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
-      file.set_permissions(permissions)
+      file.set_permissions(permissions);
     }
     #[cfg(not(unix))]
     let _ = mode;
