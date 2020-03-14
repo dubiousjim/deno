@@ -1,17 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
-use std::fs::{DirBuilder, File, OpenOptions};
-use std::io::ErrorKind;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
-use rand;
-use rand::Rng;
 use walkdir::WalkDir;
 
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,

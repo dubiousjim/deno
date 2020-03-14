@@ -13,12 +13,20 @@ use std;
 use std::convert::From;
 use std::convert::TryInto;
 use std::fs;
+use std::fs::DirBuilder;
 use std::io;
-use std::path::Path;
+use std::io::ErrorKind; // make_temp and windows chown
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tokio::fs as tokio_fs;
+use tokio;
+
+use rand;
+use rand::Rng;
 
 use utime::set_file_times;
+
+#[cfg(unix)]
+use std::os::unix::fs::DirBuilderExt;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -28,9 +36,6 @@ pub use std::os::unix::fs::symlink;
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, RawFd};
-
-#[cfg(unix)]
-use tokio;
 
 #[cfg(unix)]
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
@@ -43,7 +48,9 @@ fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
 }
 
 #[cfg(unix)]
-pub fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+pub fn my_check_open_for_writing(
+  file: &tokio::fs::File,
+) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
@@ -57,7 +64,9 @@ pub fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
 }
 
 #[cfg(unix)]
-pub fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+pub fn my_check_open_for_reading(
+  file: &tokio::fs::File,
+) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
@@ -415,7 +424,11 @@ fn set_dir_permissions(_builder: &mut DirBuilder, _mode: u32) {
   // NOOP on windows
 }
 
-pub fn my_mkdir(path: &Path, mode: u32, recursive: bool) -> std::io::Result<()> {
+pub fn my_mkdir(
+  path: &Path,
+  mode: u32,
+  recursive: bool,
+) -> std::io::Result<()> {
   let mut builder = DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permissions(&mut builder, mode);
@@ -817,7 +830,7 @@ fn op_rename(
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
-      let open_options = std::fs::OpenOptions::new();
+      let mut open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       open_options.open(&newpath)?;
     }
@@ -988,7 +1001,7 @@ pub fn my_make_temp(
       set_dir_permissions(&mut builder, 0o700);
       builder.create(buf.as_path())
     } else {
-      let mut open_options = OpenOptions::new();
+      let mut open_options = fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       #[cfg(unix)]
       open_options.mode(0o600);
@@ -1151,7 +1164,7 @@ fn op_ftruncate(
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
     #[cfg(unix)]
-    deno_fs::check_open_for_writing(&file)?;
+    my_check_open_for_writing(&file)?;
     debug!("op_ftruncate {} {}", rid, len);
     file.set_len(len).await?;
     Ok(json!({}))
@@ -1203,7 +1216,7 @@ fn op_fchmod(
   let fut = async move {
     #[cfg(unix)]
     {
-      deno_fs::check_open_for_writing(&file)?;
+      my_check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
       let metadata = file.metadata().await?;
       let mut permissions = metadata.permissions();
@@ -1280,7 +1293,7 @@ fn op_futime(
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
-      let fd = deno_fs::check_open_for_writing(&file)?;
+      let fd = my_check_open_for_writing(&file)?;
       // require times to be 63 bit unsigned
       let atime: u64 = args.atime.try_into()?;
       let mtime: u64 = args.mtime.try_into()?;
@@ -1327,7 +1340,7 @@ fn op_fstat(
     {
       debug!("op_fstat {}", rid);
       #[allow(unused)]
-      let fd = deno_fs::check_open_for_reading(&file)?;
+      let fd = my_check_open_for_reading(&file)?;
       /*
       let filestat: nix::sys::stat::FileStat = deno_fs::fstat(fd)?;
       let sflag = deno_fs::SFlag::from_bits_truncate(filestat.st_mode);
