@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::dispatch_json::{blocking_json, /* tokio_json,*/ Deserialize, JsonOp, Value};
+#![feature(async_closure)]
+use super::dispatch_json::{blocking_json, tokio_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
@@ -745,7 +746,6 @@ struct RealpathArgs {
   path: String,
 }
 
-#![feature(async_closure)]
 fn op_realpath(
   state: &State,
   args: Value,
