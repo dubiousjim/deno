@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::dispatch_json::{blocking_json, /*tokio_json,*/ Deserialize, JsonOp, Value};
+use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
@@ -17,13 +17,8 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 use rand::{thread_rng, Rng};
-use remove_dir_all::remove_dir_all;
+// use remove_dir_all::remove_dir_all;
 use utime::set_file_times;
-
-/*
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, DirBuilderExt};
-*/
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -484,14 +479,14 @@ fn op_chmod(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     // Still check file/dir exists on windows
-    let _metadata = fs::metadata(&path)?;
+    let _metadata = fs::metadata(&path)?; // TOKIZE
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
-      fs::set_permissions(&path, permissions)?;
+      fs::set_permissions(&path, permissions)?; // TOKIZE
     }
     Ok(json!({}))
   })
@@ -568,19 +563,26 @@ fn op_remove(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    let metadata = fs::symlink_metadata(&path)?;
+  let fut = async move {
+    let metadata = tokio::fs::symlink_metadata(&path).await?;
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
-      fs::remove_file(&path)?;
+      tokio::fs::remove_file(&path).await?;
     } else if recursive {
-      remove_dir_all(&path)?;
+      tokio::fs::remove_dir_all(&path).await?;
     } else {
-      fs::remove_dir(&path)?;
+      tokio::fs::remove_dir(&path).await?;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -620,17 +622,17 @@ fn op_copy_file(
     if create && !create_new {
       // default, most efficient version -- data never copied out of kernel space
       // returns size of from as u64 (we ignore)
-      fs::copy(&from, &to)?;
+      fs::copy(&from, &to)?; // TOKIZE
     } else {
-      let mut from_file = fs::OpenOptions::new().read(true).open(&from)?;
+      let mut from_file = fs::OpenOptions::new().read(true).open(&from)?; // TOKIZE
       let mut open_options = fs::OpenOptions::new();
       open_options
         .create(create)
         .create_new(create_new)
         .write(true);
-      let mut to_file = open_options.open(&to)?;
+      let mut to_file = open_options.open(&to)?; // TOKIZE
       let from_meta = from_file.metadata()?;
-      to_file.set_permissions(from_meta.permissions())?;
+      to_file.set_permissions(from_meta.permissions())?; // TOKIZE
       // returns size of from as u64 (we ignore)
       io::copy(&mut from_file, &mut to_file)?;
     }
@@ -650,7 +652,7 @@ macro_rules! to_seconds {
 
 #[inline(always)]
 fn get_stat_json(
-  metadata: fs::Metadata,
+  metadata: fs::Metadata, // TOKIZE
   maybe_name: Option<String>,
 ) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
@@ -726,9 +728,9 @@ fn op_stat(
   blocking_json(is_sync, move || {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      fs::symlink_metadata(&path)?
+      fs::symlink_metadata(&path)? // TOKIZE
     } else {
-      fs::metadata(&path)?
+      fs::metadata(&path)? // TOKIZE
     };
     get_stat_json(metadata, None)
   })
@@ -751,8 +753,29 @@ fn op_realpath(
 
   state.check_read(&path)?;
 
+  // op_realpath, notblocking_json
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
+    debug!("op_realpath {}", path.display());
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = tokio::fs::canonicalize(&path).await?;
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
+    Ok(json!(realpath_str))
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+  /*
+  Blocking_json(is_sync, move || {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
@@ -764,6 +787,35 @@ fn op_realpath(
     }
     Ok(json!(realpath_str))
   })
+   */
+  /*
+  tokio_json(is_sync, async || {
+    debug!("op_realpath {}", path.display());
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = tokio::fs::canonicalize(&path).await?;
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
+    Ok(json!(realpath_str))
+  })
+
+#[allow(dead_code)]
+pub fn tokio_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
+where
+  F: 'static + Send + FnOnce() -> JsonResult,
+{
+  let fut = async move { f() }.boxed_local();
+  if is_sync {
+    let result = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(result))
+  } else {
+    Ok(JsonOp::Async(fut))
+  }
+}
+   */
 }
 
 #[derive(Deserialize)]
@@ -784,9 +836,9 @@ fn op_read_dir(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = fs::read_dir(path)?
+    let entries: Vec<_> = tokio::fs::read_dir(path).await?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
@@ -801,7 +853,14 @@ fn op_read_dir(
       .collect();
 
     Ok(json!({ "entries": entries }))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -830,11 +889,11 @@ fn op_rename(
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
-      let mut open_options = fs::OpenOptions::new();
+      let mut open_options = fs::OpenOptions::new(); // TOKIZE
       open_options.write(true).create_new(true);
       open_options.open(&newpath)?;
     }
-    fs::rename(&oldpath, &newpath)?;
+    fs::rename(&oldpath, &newpath)?; // TOKIZE
     Ok(json!({}))
   })
 }
@@ -862,7 +921,7 @@ fn op_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldname.display(), newname.display());
-    fs::hard_link(&oldname, &newname)?;
+    fs::hard_link(&oldname, &newname)?; // TOKIZE
     Ok(json!({}))
   })
 }
@@ -922,7 +981,7 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
-    let path = fs::read_link(&path)?;
+    let path = fs::read_link(&path)?; // TOKIZE
     let path_str = path.to_str().unwrap();
 
     Ok(json!(path_str))
@@ -957,7 +1016,7 @@ fn op_truncate(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = fs::OpenOptions::new();
+    let mut open_options = fs::OpenOptions::new(); // TOKIZE
     if let Some(_mode) = args.mode {
       if !(create || create_new) {
         return Err(OpError::type_error(
@@ -976,7 +1035,7 @@ fn op_truncate(
       .create(create)
       .create_new(create_new)
       .write(true);
-    let f = open_options.open(&path)?;
+    let f = open_options.open(&path)?; // TOKIZE
     f.set_len(len)?;
     Ok(json!({}))
   })
