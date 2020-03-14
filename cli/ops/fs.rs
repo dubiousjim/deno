@@ -496,6 +496,7 @@ fn op_chmod(
     let _metadata = fs::metadata(&path)?;
     #[cfg(unix)]
     {
+      use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
