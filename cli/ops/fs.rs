@@ -755,8 +755,23 @@ fn op_realpath(
 
   state.check_read(&path)?;
 
+  /*
   let is_sync = args.promise_id.is_none();
-  tokio_json(is_sync, async move || {
+  tokio_json(is_sync, move || {
+    debug!("op_realpath {}", path.display());
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = tokio::fs::canonicalize(&path);
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
+    Ok(json!(realpath_str))
+  })
+  */
+  // op_realpath, notblocking_json
+  let fut = async move {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
@@ -767,7 +782,14 @@ fn op_realpath(
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
     Ok(json!(realpath_str))
-  })
+  };
+
+  if args.promise_id.is_none() {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
