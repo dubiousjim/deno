@@ -461,7 +461,7 @@ fn op_mkdir(
       permissions.set_mode(mode);
       match tokio_fs::set_permissions(&path, permissions).await {
         Ok(()) => (),
-        Err(e) => {
+        Err(_e) => {
           tokio_fs::remove_dir(path).await?;
           // return Err(e);
           ()
