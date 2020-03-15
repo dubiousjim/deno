@@ -9,7 +9,7 @@ use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use std::convert::{From, TryInto};
-use std::env::{set_current_dir,current_dir,temp_dir};
+use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io; // io::{Result, Error, SeekFrom, copy} and io::ErrorKind (make_temp and windows chown)
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
