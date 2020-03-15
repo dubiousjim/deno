@@ -236,7 +236,7 @@ unitTest(
     const f = Deno.openSync("README.md", "r");
     const packageInfo = f.statSync();
     f.close();
-    assert(packageInfo.length > 0);
+    assert(packageInfo.size > 0);
     assert(packageInfo.isFile());
     assert(!packageInfo.isSymlink());
   }
@@ -248,7 +248,7 @@ unitTest(
     const f = await Deno.open("README.md", "r");
     const packageInfo = await f.stat();
     f.close();
-    assert(packageInfo.length > 0);
+    assert(packageInfo.size > 0);
     assert(packageInfo.isFile());
     assert(!packageInfo.isSymlink());
   }
