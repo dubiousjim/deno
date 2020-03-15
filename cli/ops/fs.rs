@@ -18,7 +18,6 @@ use tokio;
 /*
  * TODO(jp)
  * ErrBox::from ?? chown, futime, my_check_open_for_xxx
- * "[Nn]ot implemented"
  * JSDoc for intermed dir modes for mkdir -p
  * Better tests for mkdir {mode}, with/without -p
  */
@@ -398,7 +397,7 @@ fn op_umask(
   #[cfg(not(unix))]
   {
     let _ = args.mask; // avoid unused warning.
-    return Err(OpError::not_implemented());
+    Err(OpError::not_implemented())
   }
   #[cfg(unix)]
   Ok(JsonOp::Sync(json!(umask(args.mask))))
@@ -579,18 +578,13 @@ fn op_chown(
       let nix_uid = Uid::from_raw(args.uid);
       let nix_gid = Gid::from_raw(args.gid);
       chown(path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      Ok(json!({}))
     }
     #[cfg(not(unix))]
     {
       // TODO: implement chown for Windows
-      /*
-      let e =
-        io::Error::new(io::ErrorKind::Other, "Not implemented".to_string());
-      return Err(ErrBox::from(e));
-      */
-      return Err(OpError::not_implemented());
+      Err(OpError::not_implemented())
     }
-    Ok(json!({}))
   })
 }
 
@@ -1021,7 +1015,7 @@ fn op_symlink(
   state.check_write(&newname)?;
   // TODO Use type for Windows.
   if cfg!(not(unix)) {
-    // return Err(OpError::other("Not implemented".to_string()));
+    let _ = oldname; // avoid unused warning
     return Err(OpError::not_implemented());
   }
 
@@ -1029,14 +1023,9 @@ fn op_symlink(
   let fut = async move {
     #[cfg(unix)]
     {
-      // use std::os::unix::fs::symlink;
       use tokio::fs::os::unix::symlink;
       debug!("op_symlink {} {}", oldname.display(), newname.display());
       symlink(&oldname, &newname).await?;
-    }
-    #[cfg(not(unix))]
-    {
-      let _ = oldname; // avoid unused warning
     }
     Ok(json!({}))
   };
@@ -1353,7 +1342,6 @@ fn op_fchmod(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if cfg!(not(unix)) {
-    // return Err(OpError::other("Not implemented".to_string()));
     return Err(OpError::not_implemented());
   }
   let args: FChmodArgs = serde_json::from_value(args)?;
@@ -1418,7 +1406,6 @@ fn op_futime(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if cfg!(not(unix)) {
-    // return Err(OpError::other("Not implemented".to_string()));
     return Err(OpError::not_implemented());
   }
   let args: FUtimeArgs = serde_json::from_value(args)?;
@@ -1474,7 +1461,6 @@ fn op_fstat(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if cfg!(not(unix)) {
-    // return Err(OpError::other("Not implemented".to_string()));
     return Err(OpError::not_implemented());
   }
   let args: FStatArgs = serde_json::from_value(args)?;
