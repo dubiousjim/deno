@@ -17,7 +17,6 @@ use tokio;
 
 /*
  * TODO(jp)
- * JSDoc for intermed dir modes for mkdir -p
  * Better tests for mkdir {mode}, with/without -p
  */
 
