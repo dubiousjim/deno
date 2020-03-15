@@ -8,7 +8,7 @@ use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
-use remove_dir_all::remove_dir_all;
+// use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
 use std::fs;
@@ -393,7 +393,7 @@ fn op_remove(
     if file_type.is_file() || file_type.is_symlink() {
       fs::remove_file(&path)?;
     } else if recursive {
-      remove_dir_all(&path)?;
+      fs::remove_dir_all(&path)?;
     } else {
       fs::remove_dir(&path)?;
     }
