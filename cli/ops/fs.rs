@@ -460,12 +460,12 @@ fn op_mkdir(
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
       match tokio_fs::set_permissions(&path, permissions).await {
-        Ok(()) => Ok(()),
+        Ok(()) => (),
         Err(e) => {
           tokio_fs::remove_dir(path).await?;
-          Err(e)
+          return Err(e);
         }
-      }?;
+      }
     }
     Ok(json!({}))
   };
