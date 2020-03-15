@@ -520,7 +520,7 @@ fn op_chown(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // CANTFIX
   blocking_json(is_sync, move || {
     debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
     #[cfg(unix)]
@@ -960,17 +960,25 @@ fn op_symlink(
   if cfg!(not(unix)) {
     return Err(OpError::other("Not implemented".to_string()));
   }
+
   let is_sync = args.promise_id.is_none();
-  // FIXME
-  blocking_json(is_sync, move || {
+  let fut = async move {
     #[cfg(unix)]
     {
-      use std::os::unix::fs::symlink;
+      // use std::os::unix::fs::symlink;
+      use tokio::fs::os::unix::symlink;
       debug!("op_symlink {} {}", oldname.display(), newname.display());
-      symlink(&oldname, &newname)?;
+      symlink(&oldname, &newname).await?;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
