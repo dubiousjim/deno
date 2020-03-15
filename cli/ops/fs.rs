@@ -103,6 +103,25 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fstat", s.stateful_json_op(op_fstat));
 }
 
+fn TokioOpenOptions(mode: Option<u32>) -> Result<tokio::fs::OpenOptions, OpError> {
+  if let Some(mode) = args.mode {
+    #[allow(unused_mut)]
+    let mut std_options = std::fs::OpenOptions::new();
+    // mode only used if creating the file on Unix
+    // if not specified, defaults to 0o666
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      std_options.mode(mode & 0o777);
+    }
+    #[cfg(not(unix))]
+    let _ = mode; // avoid unused warning
+    tokio::fs::OpenOptions::from(std_options)
+  } else {
+    tokio::fs::OpenOptions::new()
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
@@ -135,22 +154,7 @@ fn op_open(
   let state_ = state.clone();
   let gave_mode = args.mode.is_some();
 
-  let mut open_options = if let Some(mode) = args.mode {
-    #[allow(unused_mut)]
-    let mut std_options = std::fs::OpenOptions::new();
-    // mode only used if creating the file on Unix
-    // if not specified, defaults to 0o666
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::OpenOptionsExt;
-      std_options.mode(mode & 0o777);
-    }
-    #[cfg(not(unix))]
-    let _ = mode; // avoid unused warning
-    tokio::fs::OpenOptions::from(std_options)
-  } else {
-    tokio::fs::OpenOptions::new()
-  };
+  let mut open_options = TokioOpenOptions(args.mode);
 
   if let Some(options) = args.options {
     if options.read {
@@ -1090,11 +1094,6 @@ struct TruncateArgs {
   create_new: bool,
 }
 
-/*
-fn TokioOpenOptions(mode: Option<u32>) -> Result<tokio::fs::OpenOptions, OpError> {
-}
-*/
-
 fn op_truncate(
   state: &State,
   args: Value,
@@ -1111,30 +1110,13 @@ fn op_truncate(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = if let Some(mode) = args.mode {
-      #[allow(unused_mut)]
-      let mut std_options = std::fs::OpenOptions::new();
-      // mode only used if creating the file on Unix
-      // if not specified, defaults to 0o666
-      #[cfg(unix)]
-      {
-        use std::os::unix::fs::OpenOptionsExt;
-        std_options.mode(mode & 0o777);
-      }
-      #[cfg(not(unix))]
-      let _ = mode; // avoid unused warning
-      tokio::fs::OpenOptions::from(std_options)
-    } else {
-      tokio::fs::OpenOptions::new()
-    };
-
     if args.mode.is_some() && !(create || create_new) {
       return Err(OpError::type_error(
         "specified mode without allowing file creation".to_string(),
       ));
     }
-
+    debug!("op_truncate {} {}", path.display(), len);
+    let mut open_options = TokioOpenOptions(args.mode);
     open_options
       .create(create)
       .create_new(create_new)
