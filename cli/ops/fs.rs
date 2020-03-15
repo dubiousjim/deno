@@ -583,10 +583,12 @@ fn op_chown(
     #[cfg(not(unix))]
     {
       // TODO: implement chown for Windows
-      // FIXME
+      /*
       let e =
         io::Error::new(io::ErrorKind::Other, "Not implemented".to_string());
       return Err(ErrBox::from(e));
+      */
+      return Err(OpError::not_implemented());
     }
     Ok(json!({}))
   })
@@ -1019,7 +1021,8 @@ fn op_symlink(
   state.check_write(&newname)?;
   // TODO Use type for Windows.
   if cfg!(not(unix)) {
-    return Err(OpError::other("Not implemented".to_string()));
+    // return Err(OpError::other("Not implemented".to_string()));
+    return Err(OpError::not_implemented());
   }
 
   let is_sync = args.promise_id.is_none();
@@ -1350,7 +1353,8 @@ fn op_fchmod(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if cfg!(not(unix)) {
-    return Err(OpError::other("Not implemented".to_string()));
+    // return Err(OpError::other("Not implemented".to_string()));
+    return Err(OpError::not_implemented());
   }
   let args: FChmodArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1414,7 +1418,8 @@ fn op_futime(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if cfg!(not(unix)) {
-    return Err(OpError::other("Not implemented".to_string()));
+    // return Err(OpError::other("Not implemented".to_string()));
+    return Err(OpError::not_implemented());
   }
   let args: FUtimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1469,7 +1474,8 @@ fn op_fstat(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   if cfg!(not(unix)) {
-    return Err(OpError::other("Not implemented".to_string()));
+    // return Err(OpError::other("Not implemented".to_string()));
+    return Err(OpError::not_implemented());
   }
   let args: FStatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
