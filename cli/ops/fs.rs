@@ -529,7 +529,7 @@ fn op_chown(
       let path = args.path.as_ref();
       let nix_uid = Uid::from_raw(args.uid);
       let nix_gid = Gid::from_raw(args.gid);
-      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))
+      chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
         .map_err(ErrBox::from)?;
     }
     #[cfg(not(unix))]
