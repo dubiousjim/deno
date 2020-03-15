@@ -424,17 +424,6 @@ fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
 fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
   // NOOP on windows
 }
-
-pub fn my_mkdir(
-  path: &Path,
-  mode: u32,
-  recursive: bool,
-) -> io::Result<()> {
-  let mut builder = std_fs::DirBuilder::new();
-  builder.recursive(recursive);
-  set_dir_permissions(&mut builder, mode);
-  builder.create(path)
-}
 ///////////
 
 #[derive(Deserialize)]
@@ -461,7 +450,10 @@ fn op_mkdir(
   // FIXME
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
-    my_mkdir(&path, mode, args.recursive)?;
+    let mut builder = std_fs::DirBuilder::new();
+    builder.recursive(args.recursive);
+    set_dir_permissions(&mut builder, mode);
+    builder.create(path)?;
     Ok(json!({}))
   })
 }
