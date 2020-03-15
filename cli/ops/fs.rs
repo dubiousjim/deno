@@ -311,16 +311,19 @@ fn op_sync(
 ) -> Result<JsonOp, OpError> {
   let args: SyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
-  let tokio_file = match resource {
+
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
   debug!("sync {}", rid);
   futures::executor::block_on(file.sync_all())?;
   Ok(JsonOp::Sync(json!({})))
@@ -333,16 +336,19 @@ fn op_datasync(
 ) -> Result<JsonOp, OpError> {
   let args: SyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
-  let tokio_file = match resource {
+
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
   debug!("datasync {}", rid);
   futures::executor::block_on(file.sync_data())?;
   Ok(JsonOp::Sync(json!({})))
@@ -1282,13 +1288,14 @@ fn op_ftruncate(
   let rid = args.rid as u32;
   // require len to be 63 bit unsigned
   let len: u64 = args.len.try_into()?;
+
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
@@ -1332,13 +1339,14 @@ fn op_fchmod(
   let args: FChmodArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mode = args.mode & 0o777;
+
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     // TODO(jp): save metadata instead of re-querying later?
     StreamResource::FsFile(ref file, _metadata) => file,
     _ => return Err(OpError::bad_resource_id()),
@@ -1398,13 +1406,14 @@ fn op_futime(
   // require times to be 63 bit unsigned
   let atime: u64 = args.atime.try_into()?;
   let mtime: u64 = args.mtime.try_into()?;
+
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
@@ -1450,13 +1459,14 @@ fn op_fstat(
   }
   let args: FStatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+
   let state = state.borrow();
-  let resource = state
+  let resource_holder = state
     .resource_table
-    .get::<StreamResource>(rid)
+    .get::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
-  let tokio_file = match resource {
+  let tokio_file = match resource_holder.resource {
     // TODO(jp): save metadata instead of re-querying later?
     StreamResource::FsFile(ref file, _metadata) => file,
     _ => return Err(OpError::bad_resource_id()),
