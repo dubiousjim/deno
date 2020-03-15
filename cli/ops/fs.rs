@@ -20,6 +20,7 @@ use std::time::UNIX_EPOCH;
  * TODO
  * ErrBox::from ?? chown, futime, my_check_open_for_xxx
  * JSDoc for intermed dir modes for mkdir -p
+ * Better tests for mkdir {mode}, with/without -p
  */
 
 use rand::{thread_rng, Rng};
@@ -40,7 +41,7 @@ fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
 }
 
 #[cfg(unix)]
-pub fn my_check_open_for_writing(
+fn my_check_open_for_writing(
   file: &tokio_fs::File,
 ) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
@@ -56,7 +57,7 @@ pub fn my_check_open_for_writing(
 }
 
 #[cfg(unix)]
-pub fn my_check_open_for_reading(
+fn my_check_open_for_reading(
   file: &tokio_fs::File,
 ) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
@@ -69,20 +70,6 @@ pub fn my_check_open_for_reading(
     );
     Err(ErrBox::from(e))
   }
-}
-
-
-#[cfg(unix)]
-fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
-  use std::os::unix::fs::DirBuilderExt;
-  let mode = mode & 0o777;
-  debug!("set dir mode to {:o}", mode);
-  builder.mode(mode);
-}
-
-#[cfg(not(unix))]
-fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
-  // NOOP on windows
 }
 
 pub fn init(i: &mut Isolate, s: &State) {
@@ -1111,7 +1098,20 @@ fn op_truncate(
 }
 
 ///////////
-pub fn my_make_temp(
+#[cfg(unix)]
+fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
+  use std::os::unix::fs::DirBuilderExt;
+  let mode = mode & 0o777;
+  debug!("set dir mode to {:o}", mode);
+  builder.mode(mode);
+}
+
+#[cfg(not(unix))]
+fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
+  // NOOP on windows
+}
+
+fn my_make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
   suffix: Option<&str>,
@@ -1389,7 +1389,7 @@ use nix::sys::stat::futimens;
 use nix::sys::time::{TimeSpec, TimeValLike};
 
 #[cfg(unix)]
-pub fn fset_file_times(
+fn fset_file_times(
   fd: RawFd,
   atime: u64,
   mtime: u64,
