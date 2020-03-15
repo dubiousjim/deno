@@ -10,7 +10,7 @@ use deno_core::*;
 use futures::future::FutureExt;
 use std::convert::{From, TryInto};
 use std::env::{current_dir, set_current_dir, temp_dir};
-use std::io::{SeekFrom, Result as ioResult, ErrorKind};
+use std::io::{ErrorKind, Result as ioResult, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio;
