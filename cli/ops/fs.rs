@@ -463,7 +463,7 @@ fn op_mkdir(
         let mut permissions = metadata.permissions();
         permissions.set_mode(mode);
         */
-        let permissions = PermissionsExt::from_mode(mode);
+        let permissions = PermissionsExt::from_mode(mode & !umask(None));
         match tokio_fs::set_permissions(&path, permissions).await {
           Ok(()) => (),
           Err(e) => {
