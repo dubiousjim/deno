@@ -32,16 +32,11 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 #[cfg(unix)]
-fn get_mode(fd: RawFd) -> Result<OFlag, OpError> {
-  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-  let flags = OFlag::from_bits_truncate(flags);
-  Ok(OFlag::O_ACCMODE & flags)
-}
-
-#[cfg(unix)]
 fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   let fd = file.as_raw_fd();
-  let mode = get_mode(fd)?;
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
   if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
     Ok(fd)
   } else {
@@ -55,7 +50,9 @@ fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
 #[cfg(unix)]
 fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   let fd = file.as_raw_fd();
-  let mode = get_mode(fd)?;
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
   if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
     Ok(fd)
   } else {
