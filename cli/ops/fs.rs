@@ -9,15 +9,14 @@ use crate::state::State;
 use deno_core::*;
 use futures::future::FutureExt;
 use std::convert::{From, TryInto};
-use std::env;
-// use std::fs;
+use std::env::{set_current_dir,current_dir,temp_dir};
 use std::io; // io::{Result, Error, SeekFrom, copy} and io::ErrorKind (make_temp and windows chown)
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio;
 
 /*
- * TODO
+ * TODO(jp)
  * ErrBox::from ?? chown, futime, my_check_open_for_xxx
  * "[Nn]ot implemented"
  * JSDoc for intermed dir modes for mkdir -p
@@ -416,7 +415,7 @@ fn op_chdir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  env::set_current_dir(&args.directory)?;
+  set_current_dir(&args.directory)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -1141,7 +1140,7 @@ fn make_temp(
   let suffix_ = suffix.unwrap_or("");
   let mut buf: PathBuf = match dir {
     Some(ref p) => p.to_path_buf(),
-    None => env::temp_dir(),
+    None => temp_dir(),
   }
   .join("_");
   let mut rng = thread_rng();
@@ -1197,7 +1196,7 @@ fn op_make_temp_dir(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state.check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
+  state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   // TODO(jp): op_make_temp_dir
@@ -1229,7 +1228,7 @@ fn op_make_temp_file(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state.check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
+  state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   // TODO(jp): op_make_temp_file
@@ -1284,7 +1283,7 @@ fn op_cwd(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let path = env::current_dir()?;
+  let path = current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
 }
