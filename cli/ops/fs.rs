@@ -453,12 +453,13 @@ fn op_mkdir(
     } else {
       tokio_fs::create_dir(&path).await?;
     }
-    #[cfg(not(unix))]
+    #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       let metadata = tokio_fs::metadata(&path).await?;
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
+      /*
       match tokio_fs::set_permissions(&path, permissions).await {
         Ok(()) => (),
         Err(e) => {
@@ -466,6 +467,7 @@ fn op_mkdir(
           return Err(e);
         }
       }
+      */
     }
     /*
     let mut builder = std_fs::DirBuilder::new();
