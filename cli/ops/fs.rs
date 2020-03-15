@@ -447,13 +447,13 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  let mode = args.mode;
+  let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_mkdir {} {:o} {}", path.display(), mode.unwrap_or(0o777), args.recursive);
+    debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
       // exit early if dir already exists, so that we don't
       // try to chmod it and remove it on failure
@@ -464,17 +464,24 @@ fn op_mkdir(
     } else {
       tokio_fs::create_dir(&path).await?;
     }
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::PermissionsExt;
-      let metadata = tokio_fs::metadata(&path).await?;
-      let mut permissions = metadata.permissions();
-      permissions.set_mode(mode.unwrap_or(0o777));
-      match tokio_fs::set_permissions(&path, permissions).await {
-        Ok(()) => (),
-        Err(e) => {
-          tokio_fs::remove_dir(path).await?;
-          return Err(OpError::from(e));
+    if let Some(_) = args.mode {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        /*
+        let metadata = tokio_fs::metadata(&path).await?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(mode);
+        */
+        let permissions = PermissionsExt::from_mode(mode);
+        match tokio_fs::set_permissions(&path, permissions).await {
+          Ok(()) => (),
+          Err(e) => {
+            // if dir already existed (and so might not be empty)
+            // we'll already have exited (if args.recursive) or failed
+            tokio_fs::remove_dir(path).await?;
+            return Err(OpError::from(e));
+          }
         }
       }
     }
@@ -517,8 +524,11 @@ fn op_chmod(
     {
       use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
+      /*
       let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
+      */
+      let permissions = PermissionsExt::from_mode(mode);
       tokio_fs::set_permissions(&path, permissions).await?;
     }
     Ok(json!({}))
@@ -1352,9 +1362,12 @@ fn op_fchmod(
       use std::os::unix::fs::PermissionsExt;
       my_check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
+      /*
       let metadata = file.metadata().await?;
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
+      */
+      let permissions = PermissionsExt::from_mode(mode);
       file.set_permissions(permissions).await?;
     }
     Ok(json!({}))
