@@ -1117,8 +1117,7 @@ fn op_truncate(
   })
 }
 
-///////////
-fn my_make_temp(
+fn make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
   suffix: Option<&str>,
@@ -1135,6 +1134,7 @@ fn my_make_temp(
   loop {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
+    // TODO(jp): tokio-ize?
     let r = if is_dir {
       #[allow(unused_mut)]
       let mut builder = std_fs::DirBuilder::new();
@@ -1162,7 +1162,6 @@ fn my_make_temp(
     }
   }
 }
-///////////
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1195,7 +1194,7 @@ fn op_make_temp_dir(
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
-    let path = my_make_temp(
+    let path = make_temp(
       // Converting Option<String> to Option<&str>
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
@@ -1230,7 +1229,7 @@ fn op_make_temp_file(
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
-    let path = my_make_temp(
+    let path = make_temp(
       // Converting Option<String> to Option<&str>
       dir.as_ref().map(|x| &**x),
       prefix.as_ref().map(|x| &**x),
@@ -1391,28 +1390,6 @@ fn op_fchmod(
   }
 }
 
-///////
-/*
-#[cfg(unix)]
-use nix::sys::stat::futimens;
-
-#[cfg(unix)]
-use nix::sys::time::{TimeSpec, TimeValLike};
-
-#[cfg(unix)]
-fn fset_file_times(
-  fd: RawFd,
-  atime: u64,
-  mtime: u64,
-) -> Result<(), ErrBox> {
-  let atime = TimeSpec::seconds(atime as i64);
-  let mtime = TimeSpec::seconds(mtime as i64);
-  futimens(fd, &atime, &mtime).map_err(ErrBox::from)?;
-  Ok(())
-}
-*/
-///////
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FUtimeArgs {
@@ -1461,7 +1438,6 @@ fn op_futime(
       let atime: u64 = args.atime.try_into()?;
       let mtime: u64 = args.mtime.try_into()?;
       debug!("op_futime {} {} {}", rid, atime, mtime);
-      // fset_file_times(fd, atime, mtime)?;
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
       futimens(fd, &atime, &mtime)?; // .map_err(ErrBox::from)?;
