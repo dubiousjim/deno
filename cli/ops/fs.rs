@@ -442,7 +442,6 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  /*
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     // #[allow(unused_mut)]
@@ -456,12 +455,12 @@ fn op_mkdir(
     builder.create(path)?;
     Ok(json!({}))
   })
-  */
+  /*
   let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
       // exit early if dir already exists, so that we don't
-      // try to chmod it and remove it on failure
+      // try to apply mode and remove it on failure
       if let Ok(_) = tokio_fs::metadata(&path).await {
         return Ok(json!({}))
       }
@@ -478,10 +477,12 @@ fn op_mkdir(
         let mut permissions = metadata.permissions();
         permissions.set_mode(mode);
         */
+        // we have to query (2 syscalls) and apply umask by hand
         let permissions = PermissionsExt::from_mode(mode & !umask(None));
         match tokio_fs::set_permissions(&path, permissions).await {
           Ok(()) => (),
           Err(e) => {
+            // couldn't apply mode, so remove_dir then propagate error
             // if dir already existed (and so might not be empty)
             // we'll already have exited (if args.recursive) or failed
             tokio_fs::remove_dir(path).await?;
@@ -499,6 +500,7 @@ fn op_mkdir(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
+  */
 }
 
 #[derive(Deserialize)]
