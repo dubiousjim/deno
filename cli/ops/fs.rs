@@ -442,6 +442,21 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  /*
+  blocking_json(is_sync, move || {
+    debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    // #[allow(unused_mut)]
+    let mut builder = std_fs::DirBuilder::new();
+    builder.recursive(args.recursive);
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::DirBuilderExt;
+      builder.mode(mode);
+    }
+    builder.create(path)?;
+    Ok(json!({}))
+  })
+  */
   let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
@@ -1101,19 +1116,6 @@ fn op_truncate(
 }
 
 ///////////
-#[cfg(unix)]
-fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
-  use std::os::unix::fs::DirBuilderExt;
-  let mode = mode & 0o777;
-  debug!("set dir mode to {:o}", mode);
-  builder.mode(mode);
-}
-
-#[cfg(not(unix))]
-fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
-  // NOOP on windows
-}
-
 fn my_make_temp(
   dir: Option<&Path>,
   prefix: Option<&str>,
@@ -1132,8 +1134,13 @@ fn my_make_temp(
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     let r = if is_dir {
+      #[allow(unused_mut)]
       let mut builder = std_fs::DirBuilder::new();
-      set_dir_permissions(&mut builder, 0o700);
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+      }
       builder.create(buf.as_path())
     } else {
       let mut open_options = std_fs::OpenOptions::new();
