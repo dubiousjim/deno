@@ -104,7 +104,7 @@ pub fn init(i: &mut Isolate, s: &State) {
 }
 
 fn tokioOpenOptions(mode: Option<u32>) -> Result<tokio::fs::OpenOptions, OpError> {
-  if let Some(mode) = args.mode {
+  if let Some(mode) = mode {
     #[allow(unused_mut)]
     let mut std_options = std::fs::OpenOptions::new();
     // mode only used if creating the file on Unix
@@ -154,7 +154,7 @@ fn op_open(
   let state_ = state.clone();
   let gave_mode = args.mode.is_some();
 
-  let mut open_options = tokioOpenOptions(args.mode);
+  let mut open_options = tokioOpenOptions(args.mode)?;
 
   if let Some(options) = args.options {
     if options.read {
@@ -1116,7 +1116,7 @@ fn op_truncate(
       ));
     }
     debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = tokioOpenOptions(args.mode);
+    let mut open_options = tokioOpenOptions(args.mode)?;
     open_options
       .create(create)
       .create_new(create_new)
