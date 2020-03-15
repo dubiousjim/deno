@@ -65,6 +65,20 @@ pub fn my_check_open_for_reading(
   }
 }
 
+
+#[cfg(unix)]
+fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
+  use std::os::unix::fs::DirBuilderExt;
+  let mode = mode & 0o777;
+  debug!("set dir mode to {:o}", mode);
+  builder.mode(mode);
+}
+
+#[cfg(not(unix))]
+fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
+  // NOOP on windows
+}
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -411,21 +425,6 @@ fn op_chdir(
   Ok(JsonOp::Sync(json!({})))
 }
 
-///////////
-#[cfg(unix)]
-fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
-  use std::os::unix::fs::DirBuilderExt;
-  let mode = mode & 0o777;
-  debug!("set dir mode to {:o}", mode);
-  builder.mode(mode);
-}
-
-#[cfg(not(unix))]
-fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
-  // NOOP on windows
-}
-///////////
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MkdirArgs {
@@ -447,7 +446,7 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // FIXME? DirBuilder
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     let mut builder = std_fs::DirBuilder::new();
@@ -501,30 +500,6 @@ fn op_chmod(
   }
 }
 
-////////
-#[cfg(unix)]
-use nix::unistd::{chown as unix_chown, Gid, Uid};
-
-#[cfg(unix)]
-pub fn my_chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
-  let nix_uid = Uid::from_raw(uid);
-  let nix_gid = Gid::from_raw(gid);
-  unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(ErrBox::from)
-}
-
-#[cfg(not(unix))]
-pub fn my_chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
-  // FAIL on Windows
-  // TODO: implement chown for Windows
-  let e = io::Error::new(
-    io::ErrorKind::Other,
-    "Not implemented".to_string(),
-  );
-  Err(ErrBox::from(e))
-}
-////////
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChownArgs {
@@ -548,7 +523,21 @@ fn op_chown(
   // FIXME
   blocking_json(is_sync, move || {
     debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
-    my_chown(args.path.as_ref(), args.uid, args.gid)?;
+    #[cfg(unix)]
+    {
+      use nix::unistd::{chown, Gid, Uid};
+      let path = args.path; // .as_ref();
+      let nix_uid = Uid::from_raw(uid);
+      let nix_gid = Gid::from_raw(gid);
+      chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
+        .map_err(ErrBox::from)?;
+    }
+    #[cfg(not(unix))]
+    {
+      // TODO: implement chown for Windows
+      let e = io::Error::new(io::ErrorKind::Other, "Not implemented".to_string());
+      return Err(ErrBox::from(e));
+    }
     Ok(json!({}))
   })
 }
