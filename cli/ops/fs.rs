@@ -19,6 +19,7 @@ use std::time::UNIX_EPOCH;
 /*
  * TODO
  * ErrBox::from ?? chown, futime, my_check_open_for_xxx
+ * "[Nn]ot implemented"
  * JSDoc for intermed dir modes for mkdir -p
  * Better tests for mkdir {mode}, with/without -p
  */
@@ -517,7 +518,6 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  #[allow(unused)]
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
@@ -525,17 +525,22 @@ fn op_chmod(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     // Still check file/dir exists on windows
-    let _metadata = tokio_fs::metadata(&path).await?;
+    let metadata = tokio_fs::metadata(&path).await?;
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       /*
-      let mut permissions = _metadata.permissions();
+      let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
       */
       let permissions = PermissionsExt::from_mode(mode);
       tokio_fs::set_permissions(&path, permissions).await?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = mode; // avoid unused warning
+      let _ = metadata;
     }
     Ok(json!({}))
   };
@@ -1011,7 +1016,6 @@ fn op_symlink(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
-  #[allow(unused)]
   let oldname = resolve_from_cwd(Path::new(&args.oldname))?;
   let newname = resolve_from_cwd(Path::new(&args.newname))?;
 
@@ -1029,6 +1033,10 @@ fn op_symlink(
       use tokio_fs::os::unix::symlink;
       debug!("op_symlink {} {}", oldname.display(), newname.display());
       symlink(&oldname, &newname).await?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = oldname; // avoid unused warning
     }
     Ok(json!({}))
   };
@@ -1103,7 +1111,7 @@ fn op_truncate(
   let fut = async move {
     debug!("op_truncate {} {}", path.display(), len);
     let mut open_options = tokio_fs::OpenOptions::new();
-    if let Some(_mode) = args.mode {
+    if let Some(mode) = args.mode {
       if !(create || create_new) {
         return Err(OpError::type_error(
           "specified mode without allowing file creation".to_string(),
@@ -1114,7 +1122,11 @@ fn op_truncate(
       #[cfg(unix)]
       {
         use std::os::unix::fs::OpenOptionsExt;
-        open_options.mode(_mode & 0o777);
+        open_options.mode(mode & 0o777);
+      }
+      #[cfg(not(unix))]
+      {
+        let _ = mode; // avoid unused warning
       }
     }
     open_options
@@ -1351,7 +1363,6 @@ fn op_ftruncate(
 struct FChmodArgs {
   promise_id: Option<u64>,
   rid: i32,
-  // #[allow(unused)]
   mode: u32,
 }
 
@@ -1365,7 +1376,6 @@ fn op_fchmod(
   }
   let args: FChmodArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  #[allow(unused)]
   let mode = args.mode & 0o777;
   let state = state.borrow();
   let resource = state
@@ -1378,7 +1388,6 @@ fn op_fchmod(
     StreamResource::FsFile(ref file, _metadata) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
-  #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
@@ -1395,6 +1404,11 @@ fn op_fchmod(
       */
       let permissions = PermissionsExt::from_mode(mode);
       file.set_permissions(permissions).await?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = mode; // avoid unused warning
+      let _ = file;
     }
     Ok(json!({}))
   };
@@ -1426,9 +1440,7 @@ fn op_futime(
   }
   let args: FUtimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  #[allow(unused)]
   let atime = args.atime;
-  #[allow(unused)]
   let mtime = args.mtime;
   let state = state.borrow();
   let resource = state
@@ -1440,7 +1452,6 @@ fn op_futime(
     StreamResource::FsFile(ref file, _) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
-  #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
@@ -1458,6 +1469,12 @@ fn op_futime(
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
       futimens(fd, &atime, &mtime)?; // .map_err(ErrBox::from)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = file; // avoid unused warning
+      let _ = atime;
+      let _ = mtime;
     }
     Ok(json!({}))
   })
@@ -1491,7 +1508,6 @@ fn op_fstat(
     StreamResource::FsFile(ref file, _metadata) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
-  #[allow(unused)]
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
@@ -1499,8 +1515,7 @@ fn op_fstat(
     #[cfg(unix)]
     {
       debug!("op_fstat {}", rid);
-      #[allow(unused)]
-      let fd = my_check_open_for_reading(&file)?;
+      let _fd = my_check_open_for_reading(&file)?;
       /*
       let filestat: nix::sys::stat::FileStat = deno_fs::fstat(fd)?;
       let sflag = deno_fs::SFlag::from_bits_truncate(filestat.st_mode);
@@ -1538,7 +1553,10 @@ fn op_fstat(
       get_stat_json(metadata, None)
     }
     #[cfg(not(unix))]
-    Ok(json!({}))
+    {
+      let _ = file; // avoid unused warning
+      Ok(json!({}))
+    }
   };
 
   if is_sync {
