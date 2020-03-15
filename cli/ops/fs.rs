@@ -29,10 +29,8 @@ use utime::set_file_times;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(unix)]
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
-
-#[cfg(unix)]
 fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
   let fd = file.as_raw_fd();
   let flags = fcntl(fd, FcntlArg::F_GETFL)?;
   let flags = OFlag::from_bits_truncate(flags);
@@ -49,6 +47,7 @@ fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
 
 #[cfg(unix)]
 fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
   let fd = file.as_raw_fd();
   let flags = fcntl(fd, FcntlArg::F_GETFL)?;
   let flags = OFlag::from_bits_truncate(flags);
