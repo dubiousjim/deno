@@ -465,8 +465,8 @@ fn op_mkdir(
           tokio_fs::remove_dir(path).await?;
           Err(e)
         }
-      }
-    }?;
+      }?;
+    }
     Ok(json!({}))
   };
 
