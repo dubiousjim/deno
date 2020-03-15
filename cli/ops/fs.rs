@@ -657,8 +657,7 @@ fn op_copy_file(
   state.check_write(&to)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME, op_copy_file
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_copy_file {} {}", from.display(), to.display());
     // On *nix, Rust reports non-existent `from` as io::ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
@@ -670,22 +669,30 @@ fn op_copy_file(
     if create && !create_new {
       // default, most efficient version -- data never copied out of kernel space
       // returns length of from as u64 (we ignore)
-      std_fs::copy(&from, &to)?;
+      tokio_fs::copy(&from, &to).await?;
     } else {
-      let mut from_file = std_fs::OpenOptions::new().read(true).open(&from)?;
-      let mut open_options = std_fs::OpenOptions::new();
+      let mut from_file = tokio_fs::OpenOptions::new().read(true).open(&from).await?;
+      let mut open_options = tokio_fs::OpenOptions::new();
       open_options
         .create(create)
         .create_new(create_new)
         .write(true);
-      let mut to_file = open_options.open(&to)?;
-      let from_meta = from_file.metadata()?;
-      to_file.set_permissions(from_meta.permissions())?;
+      let mut to_file = open_options.open(&to).await?;
+      let from_meta = from_file.metadata().await?;
+      to_file.set_permissions(from_meta.permissions()).await?;
       // returns length of from as u64 (we ignore)
-      io::copy(&mut from_file, &mut to_file)?;
+      tokio::io::copy(&mut from_file, &mut to_file).await?;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+
 }
 
 macro_rules! to_seconds {
