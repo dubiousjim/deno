@@ -446,15 +446,36 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME? DirBuilder
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    if args.recursive {
+      tokio_fs::create_dir_all(path).await?;
+    } else {
+      tokio_fs::create_dir(path).await?;
+    }
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let metadata = tokio_fs::metadata(&path).await?;
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(mode);
+      tokio_fs::set_permissions(path, permissions).await?;
+    }
+    /*
     let mut builder = std_fs::DirBuilder::new();
     builder.recursive(args.recursive);
     set_dir_permissions(&mut builder, mode);
     builder.create(path)?;
+    */
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -966,7 +987,7 @@ fn op_symlink(
     #[cfg(unix)]
     {
       // use std::os::unix::fs::symlink;
-      use tokio::fs::os::unix::symlink;
+      use tokio_fs::os::unix::symlink;
       debug!("op_symlink {} {}", oldname.display(), newname.display());
       symlink(&oldname, &newname).await?;
     }
@@ -1210,7 +1231,7 @@ fn op_utime(
   let mtime: u64 = args.mtime.try_into()?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // CANTFIX
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, atime, mtime);
     set_file_times(args.path, atime, mtime)?;
