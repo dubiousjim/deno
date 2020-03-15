@@ -76,7 +76,7 @@ export function createResolvable<T>(): Resolvable<T> {
 
 // @internal
 export function notImplemented(): never {
-  throw new Error("Not_jp_implemented");
+  throw new Error("not implemented");
 }
 
 // @internal
