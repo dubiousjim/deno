@@ -526,7 +526,7 @@ fn op_chown(
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
-      let path = args.path.as_ref();
+      let path: &str = args.path.as_ref();
       let nix_uid = Uid::from_raw(args.uid);
       let nix_gid = Gid::from_raw(args.gid);
       chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
