@@ -42,9 +42,7 @@ fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
 }
 
 #[cfg(unix)]
-fn my_check_open_for_writing(
-  file: &tokio::fs::File,
-) -> Result<RawFd, ErrBox> {
+fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
@@ -58,9 +56,7 @@ fn my_check_open_for_writing(
 }
 
 #[cfg(unix)]
-fn my_check_open_for_reading(
-  file: &tokio::fs::File,
-) -> Result<RawFd, ErrBox> {
+fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
@@ -467,7 +463,7 @@ fn op_mkdir(
       // exit early if dir already exists, so that we don't
       // try to apply mode and remove it on failure
       if path.is_dir() {
-        return Ok(json!({}))
+        return Ok(json!({}));
       }
       tokio::fs::create_dir_all(&path).await?;
     } else {
@@ -589,7 +585,8 @@ fn op_chown(
     #[cfg(not(unix))]
     {
       // TODO: implement chown for Windows
-      let e = io::Error::new(io::ErrorKind::Other, "Not implemented".to_string());
+      let e =
+        io::Error::new(io::ErrorKind::Other, "Not implemented".to_string());
       return Err(ErrBox::from(e));
     }
     Ok(json!({}))
@@ -677,7 +674,8 @@ fn op_copy_file(
       // returns length of from as u64 (we ignore)
       tokio::fs::copy(&from, &to).await?;
     } else {
-      let mut from_file = tokio::fs::OpenOptions::new().read(true).open(&from).await?;
+      let mut from_file =
+        tokio::fs::OpenOptions::new().read(true).open(&from).await?;
       let mut open_options = tokio::fs::OpenOptions::new();
       open_options
         .create(create)
@@ -698,7 +696,6 @@ fn op_copy_file(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
-
 }
 
 macro_rules! to_seconds {
@@ -856,33 +853,33 @@ fn op_realpath(
   })
    */
   /*
-  tokio_json(is_sync, async || {
-    debug!("op_realpath {}", path.display());
-    // corresponds to the realpath on Unix and
-    // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = tokio::fs::canonicalize(&path).await?;
-    let mut realpath_str =
-      realpath.to_str().unwrap().to_owned().replace("\\", "/");
-    if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
-    }
-    Ok(json!(realpath_str))
-  })
+    tokio_json(is_sync, async || {
+      debug!("op_realpath {}", path.display());
+      // corresponds to the realpath on Unix and
+      // CreateFile and GetFinalPathNameByHandle on Windows
+      let realpath = tokio::fs::canonicalize(&path).await?;
+      let mut realpath_str =
+        realpath.to_str().unwrap().to_owned().replace("\\", "/");
+      if cfg!(windows) {
+        realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+      }
+      Ok(json!(realpath_str))
+    })
 
-#[allow(dead_code)]
-pub fn tokio_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
-where
-  F: 'static + Send + FnOnce() -> JsonResult,
-{
-  let fut = async move { f() }.boxed_local();
-  if is_sync {
-    let result = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(result))
-  } else {
-    Ok(JsonOp::Async(fut))
+  #[allow(dead_code)]
+  pub fn tokio_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
+  where
+    F: 'static + Send + FnOnce() -> JsonResult,
+  {
+    let fut = async move { f() }.boxed_local();
+    if is_sync {
+      let result = futures::executor::block_on(fut)?;
+      Ok(JsonOp::Sync(result))
+    } else {
+      Ok(JsonOp::Async(fut))
+    }
   }
-}
-   */
+     */
 }
 
 #[derive(Deserialize)]
@@ -1196,14 +1193,11 @@ fn op_make_temp_dir(
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
-  let dir = args
-    .dir
-    .map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
+  let dir = args.dir.map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state
-    .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
+  state.check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   // TODO(jp): op_make_temp_dir
@@ -1231,14 +1225,11 @@ fn op_make_temp_file(
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
-  let dir = args
-    .dir
-    .map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
+  let dir = args.dir.map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state
-    .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
+  state.check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
   // TODO(jp): op_make_temp_file
