@@ -10,11 +10,11 @@ use deno_core::*;
 use futures::future::FutureExt;
 use std::convert::{From, TryInto};
 use std::env;
-use std::fs;
+use std::fs as std_fs;
+use tokio::fs as tokio_fs;
 use std::io; // io::{Result, Error, SeekFrom, copy} and io::ErrorKind (make_temp and windows chown)
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tokio;
 
 use rand::{thread_rng, Rng};
 // use remove_dir_all::remove_dir_all;
@@ -35,7 +35,7 @@ fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
 
 #[cfg(unix)]
 pub fn my_check_open_for_writing(
-  file: &tokio::fs::File,
+  file: &tokio_fs::File,
 ) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
@@ -51,7 +51,7 @@ pub fn my_check_open_for_writing(
 
 #[cfg(unix)]
 pub fn my_check_open_for_reading(
-  file: &tokio::fs::File,
+  file: &tokio_fs::File,
 ) -> Result<RawFd, ErrBox> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
@@ -129,7 +129,7 @@ fn op_open(
 
   let mut open_options = if let Some(mode) = args.mode {
     #[allow(unused_mut)]
-    let mut std_options = fs::OpenOptions::new();
+    let mut std_options = std_fs::OpenOptions::new();
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
@@ -139,9 +139,9 @@ fn op_open(
     }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
-    tokio::fs::OpenOptions::from(std_options)
+    tokio_fs::OpenOptions::from(std_options)
   } else {
-    tokio::fs::OpenOptions::new()
+    tokio_fs::OpenOptions::new()
   };
 
   if let Some(options) = args.options {
@@ -413,7 +413,7 @@ fn op_chdir(
 
 ///////////
 #[cfg(unix)]
-fn set_dir_permissions(builder: &mut fs::DirBuilder, mode: u32) {
+fn set_dir_permissions(builder: &mut std_fs::DirBuilder, mode: u32) {
   use std::os::unix::fs::DirBuilderExt;
   let mode = mode & 0o777;
   debug!("set dir mode to {:o}", mode);
@@ -421,7 +421,7 @@ fn set_dir_permissions(builder: &mut fs::DirBuilder, mode: u32) {
 }
 
 #[cfg(not(unix))]
-fn set_dir_permissions(_builder: &mut fs::DirBuilder, _mode: u32) {
+fn set_dir_permissions(_builder: &mut std_fs::DirBuilder, _mode: u32) {
   // NOOP on windows
 }
 
@@ -430,7 +430,7 @@ pub fn my_mkdir(
   mode: u32,
   recursive: bool,
 ) -> io::Result<()> {
-  let mut builder = fs::DirBuilder::new();
+  let mut builder = std_fs::DirBuilder::new();
   builder.recursive(recursive);
   set_dir_permissions(&mut builder, mode);
   builder.create(path)
@@ -489,14 +489,14 @@ fn op_chmod(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     // Still check file/dir exists on windows
-    let _metadata = tokio::fs::metadata(&path).await?;
+    let _metadata = tokio_fs::metadata(&path).await?;
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
-      tokio::fs::set_permissions(&path, permissions).await?;
+      tokio_fs::set_permissions(&path, permissions).await?;
     }
     Ok(json!({}))
   };
@@ -582,15 +582,15 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    let metadata = tokio::fs::symlink_metadata(&path).await?;
+    let metadata = tokio_fs::symlink_metadata(&path).await?;
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
-      tokio::fs::remove_file(&path).await?;
+      tokio_fs::remove_file(&path).await?;
     } else if recursive {
-      tokio::fs::remove_dir_all(&path).await?;
+      tokio_fs::remove_dir_all(&path).await?;
     } else {
-      tokio::fs::remove_dir(&path).await?;
+      tokio_fs::remove_dir(&path).await?;
     }
     Ok(json!({}))
   };
@@ -641,17 +641,17 @@ fn op_copy_file(
     if create && !create_new {
       // default, most efficient version -- data never copied out of kernel space
       // returns length of from as u64 (we ignore)
-      fs::copy(&from, &to)?; // TOKIZE
+      std_fs::copy(&from, &to)?;
     } else {
-      let mut from_file = fs::OpenOptions::new().read(true).open(&from)?; // TOKIZE
-      let mut open_options = fs::OpenOptions::new();
+      let mut from_file = std_fs::OpenOptions::new().read(true).open(&from)?;
+      let mut open_options = std_fs::OpenOptions::new();
       open_options
         .create(create)
         .create_new(create_new)
         .write(true);
-      let mut to_file = open_options.open(&to)?; // TOKIZE
+      let mut to_file = open_options.open(&to)?;
       let from_meta = from_file.metadata()?;
-      to_file.set_permissions(from_meta.permissions())?; // TOKIZE
+      to_file.set_permissions(from_meta.permissions())?;
       // returns length of from as u64 (we ignore)
       io::copy(&mut from_file, &mut to_file)?;
     }
@@ -671,7 +671,7 @@ macro_rules! to_seconds {
 
 #[inline(always)]
 fn get_stat_json(
-  metadata: fs::Metadata,
+  metadata: std_fs::Metadata,
   maybe_name: Option<String>,
 ) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
@@ -747,9 +747,9 @@ fn op_stat(
   let fut = async move {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      tokio::fs::symlink_metadata(&path).await?
+      tokio_fs::symlink_metadata(&path).await?
     } else {
-      tokio::fs::metadata(&path).await?
+      tokio_fs::metadata(&path).await?
     };
     get_stat_json(metadata, None)
   };
@@ -785,7 +785,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = tokio::fs::canonicalize(&path).await?;
+    let realpath = tokio_fs::canonicalize(&path).await?;
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
@@ -805,7 +805,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = fs::canonicalize(&path)?;
+    let realpath = std_fs::canonicalize(&path)?;
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
@@ -819,7 +819,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = tokio::fs::canonicalize(&path).await?;
+    let realpath = tokio_fs::canonicalize(&path).await?;
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
@@ -865,7 +865,7 @@ fn op_read_dir(
   let fut = async move {
     debug!("op_read_dir {}", path.display());
     let mut entries = Vec::new();
-    let mut stream = tokio::fs::read_dir(path).await?;
+    let mut stream = tokio_fs::read_dir(path).await?;
     while let Some(entry) = stream.next_entry().await? {
       let metadata = entry.metadata().await.unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -912,11 +912,11 @@ fn op_rename(
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
-      let mut open_options = fs::OpenOptions::new(); // TOKIZE
+      let mut open_options = std_fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       open_options.open(&newpath)?;
     }
-    fs::rename(&oldpath, &newpath)?; // TOKIZE
+    std_fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
 }
@@ -944,7 +944,7 @@ fn op_link(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_link {} {}", oldname.display(), newname.display());
-    tokio::fs::hard_link(&oldname, &newname).await?;
+    tokio_fs::hard_link(&oldname, &newname).await?;
     Ok(json!({}))
   };
 
@@ -1012,7 +1012,7 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_read_link {}", path.display());
-    let path = tokio::fs::read_link(&path).await?;
+    let path = tokio_fs::read_link(&path).await?;
     let path_str = path.to_str().unwrap();
     Ok(json!(path_str))
   };
@@ -1054,7 +1054,7 @@ fn op_truncate(
   // FIXME
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = fs::OpenOptions::new(); // TOKIZE
+    let mut open_options = std_fs::OpenOptions::new();
     if let Some(_mode) = args.mode {
       if !(create || create_new) {
         return Err(OpError::type_error(
@@ -1073,7 +1073,7 @@ fn op_truncate(
       .create(create)
       .create_new(create_new)
       .write(true);
-    let f = open_options.open(&path)?; // TOKIZE
+    let f = open_options.open(&path)?;
     f.set_len(len)?;
     Ok(json!({}))
   })
@@ -1098,11 +1098,11 @@ pub fn my_make_temp(
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     let r = if is_dir {
-      let mut builder = fs::DirBuilder::new();
+      let mut builder = std_fs::DirBuilder::new();
       set_dir_permissions(&mut builder, 0o700);
       builder.create(buf.as_path())
     } else {
-      let mut open_options = fs::OpenOptions::new();
+      let mut open_options = std_fs::OpenOptions::new();
       open_options.write(true).create_new(true);
       #[cfg(unix)]
       {
