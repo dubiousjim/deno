@@ -461,7 +461,7 @@ fn op_mkdir(
     if args.recursive {
       // exit early if dir already exists, so that we don't
       // try to apply mode and remove it on failure
-      if let Ok(_) = tokio_fs::metadata(&path).await {
+      if path.is_dir() {
         return Ok(json!({}))
       }
       tokio_fs::create_dir_all(&path).await?;
