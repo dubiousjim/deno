@@ -446,14 +446,14 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  let fut: bool = async move {
+  let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
       tokio_fs::create_dir_all(&path).await?;
     } else {
       tokio_fs::create_dir(&path).await?;
     }
-    #[cfg(unix)]
+    #[cfg(not(unix))]
     {
       use std::os::unix::fs::PermissionsExt;
       let metadata = tokio_fs::metadata(&path).await?;
