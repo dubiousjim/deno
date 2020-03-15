@@ -234,7 +234,6 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-  // op_open, FIXME
   let fut = async move {
     let fs_file = open_options.open(path).await?;
     let mut state = state_.borrow_mut();
@@ -301,7 +300,6 @@ fn op_seek(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // op_seek, FIXME
   let fut = async move {
     debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
@@ -938,17 +936,23 @@ fn op_rename(
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME, op_rename
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
-      let mut open_options = std_fs::OpenOptions::new();
+      let mut open_options = tokio_fs::OpenOptions::new();
       open_options.write(true).create_new(true);
-      open_options.open(&newpath)?;
+      open_options.open(&newpath).await?;
     }
-    std_fs::rename(&oldpath, &newpath)?;
+    tokio_fs::rename(&oldpath, &newpath).await?;
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -1189,7 +1193,7 @@ fn op_make_temp_dir(
     .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME, op_make_temp_dir
+  // TODO(jp): op_make_temp_dir
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1224,7 +1228,7 @@ fn op_make_temp_file(
     .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME, op_make_temp_file
+  // TODO(jp): op_make_temp_file
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1478,7 +1482,6 @@ fn op_fstat(
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME op_fstat, not blocking_json
   let fut = async move {
     #[cfg(unix)]
     {
