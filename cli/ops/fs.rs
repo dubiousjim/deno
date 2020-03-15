@@ -455,7 +455,9 @@ fn op_mkdir(
   let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode.unwrap_or(0o777), args.recursive);
     if args.recursive {
-      if let Some(_) = tokio_fs::metadata(&path).await {
+      // exit early if dir already exists, so that we don't
+      // try to chmod it and remove it on failure
+      if let Ok(_) = tokio_fs::metadata(&path).await {
         return Ok(json!({}))
       }
       tokio_fs::create_dir_all(&path).await?;
