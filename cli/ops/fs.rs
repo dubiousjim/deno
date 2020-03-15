@@ -525,23 +525,20 @@ fn op_chmod(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     // Still check file/dir exists on windows
-    let metadata = tokio::fs::metadata(&path).await?;
+    let _metadata = tokio::fs::metadata(&path).await?;
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       /*
-      let mut permissions = metadata.permissions();
+      let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
       */
       let permissions = PermissionsExt::from_mode(mode);
       tokio::fs::set_permissions(&path, permissions).await?;
     }
     #[cfg(not(unix))]
-    {
-      let _ = mode; // avoid unused warning
-      let _ = metadata;
-    }
+    let _ = mode; // avoid unused warning
     Ok(json!({}))
   };
 
@@ -1093,6 +1090,11 @@ struct TruncateArgs {
   create_new: bool,
 }
 
+/*
+fn TokioOpenOptions(mode: Option<u32>) -> Result<tokio::fs::OpenOptions, OpError> {
+}
+*/
+
 fn op_truncate(
   state: &State,
   args: Value,
@@ -1137,8 +1139,8 @@ fn op_truncate(
       .create(create)
       .create_new(create_new)
       .write(true);
-    let f = open_options.open(&path).await?;
-    f.set_len(len).await?;
+    let mut file = open_options.open(&path).await?;
+    file.set_len(len).await?;
     Ok(json!({}))
   };
 
@@ -1444,8 +1446,9 @@ fn op_futime(
   }
   let args: FUtimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let atime = args.atime;
-  let mtime = args.mtime;
+  // require times to be 63 bit unsigned
+  let atime: u64 = args.atime.try_into()?;
+  let mtime: u64 = args.mtime.try_into()?;
   let state = state.borrow();
   let resource = state
     .resource_table
@@ -1466,9 +1469,6 @@ fn op_futime(
       use nix::sys::stat::futimens;
       use nix::sys::time::{TimeSpec, TimeValLike};
       let fd = my_check_open_for_writing(&file)?;
-      // require times to be 63 bit unsigned
-      let atime: u64 = args.atime.try_into()?;
-      let mtime: u64 = args.mtime.try_into()?;
       debug!("op_futime {} {} {}", rid, atime, mtime);
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
@@ -1521,7 +1521,7 @@ fn op_fstat(
       debug!("op_fstat {}", rid);
       let _fd = my_check_open_for_reading(&file)?;
       /*
-      let filestat: nix::sys::stat::FileStat = deno_fs::fstat(fd)?;
+      let filestat: nix::sys::stat::FileStat = deno_fs::fstat(_fd)?;
       let sflag = deno_fs::SFlag::from_bits_truncate(filestat.st_mode);
       // see https://unix.stackexchange.com/questions/91197
       // not available on Linux, and their
