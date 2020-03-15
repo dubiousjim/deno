@@ -367,7 +367,7 @@ fn op_datasync(
 }
 
 #[cfg(unix)]
-fn umask(mask: Option<u32>): u32 {
+fn umask(mask: Option<u32>) -> u32 {
   use nix::sys::stat::mode_t;
   use nix::sys::stat::umask;
   use nix::sys::stat::Mode;
