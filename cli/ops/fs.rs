@@ -459,15 +459,14 @@ fn op_mkdir(
       let metadata = tokio_fs::metadata(&path).await?;
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
-      /*
       match tokio_fs::set_permissions(&path, permissions).await {
         Ok(()) => (),
         Err(e) => {
           tokio_fs::remove_dir(path).await?;
-          return Err(e);
+          // return Err(e);
+          ()
         }
       }
-      */
     }
     /*
     let mut builder = std_fs::DirBuilder::new();
