@@ -446,7 +446,7 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let fut: bool = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
       tokio_fs::create_dir_all(&path).await?;
