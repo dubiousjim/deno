@@ -449,9 +449,9 @@ fn op_mkdir(
   let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
-      tokio_fs::create_dir_all(path).await?;
+      tokio_fs::create_dir_all(&path).await?;
     } else {
-      tokio_fs::create_dir(path).await?;
+      tokio_fs::create_dir(&path).await?;
     }
     #[cfg(unix)]
     {
