@@ -2,6 +2,7 @@
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
+  console.error("jim1a", Deno.cwd());
   const data = Deno.readFileSync("cli/tests/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -37,6 +38,7 @@ unitTest({ perms: { read: true } }, function readFileSyncNotFound(): void {
 unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
   void
 > {
+  console.error("jim1b", Deno.cwd());
   const data = await Deno.readFile("cli/tests/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
