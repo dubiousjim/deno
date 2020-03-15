@@ -463,7 +463,7 @@ fn op_mkdir(
         Ok(()) => (),
         Err(e) => {
           tokio_fs::remove_dir(path).await?;
-          return Err(ErrBox::from(e));
+          return Err(OpError::from(e));
         }
       }
     }
