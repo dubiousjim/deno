@@ -578,12 +578,12 @@ fn op_chown(
       let path: &str = args.path.as_ref();
       let nix_uid = Uid::from_raw(args.uid);
       let nix_gid = Gid::from_raw(args.gid);
-      chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-        .map_err(ErrBox::from)?;
+      chown(path, Option::Some(nix_uid), Option::Some(nix_gid))?;
     }
     #[cfg(not(unix))]
     {
       // TODO: implement chown for Windows
+      // FIXME
       let e =
         io::Error::new(io::ErrorKind::Other, "Not implemented".to_string());
       return Err(ErrBox::from(e));
@@ -1444,7 +1444,7 @@ fn op_futime(
       debug!("op_futime {} {} {}", rid, atime, mtime);
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
-      futimens(fd, &atime, &mtime)?; // .map_err(ErrBox::from)?;
+      futimens(fd, &atime, &mtime)?;
     }
     #[cfg(not(unix))]
     {
