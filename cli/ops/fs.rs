@@ -403,7 +403,7 @@ fn op_umask(
     return Err(OpError::not_implemented());
   }
   #[cfg(unix)]
-  Ok(JsonOp::Sync(json!(umask(args.mask)))
+  Ok(JsonOp::Sync(json!(umask(args.mask))))
 }
 
 #[derive(Deserialize)]
