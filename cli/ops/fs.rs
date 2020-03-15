@@ -1100,10 +1100,9 @@ fn op_truncate(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME, op_truncate
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = std_fs::OpenOptions::new();
+    let mut open_options = tokio_fs::OpenOptions::new();
     if let Some(_mode) = args.mode {
       if !(create || create_new) {
         return Err(OpError::type_error(
@@ -1122,10 +1121,17 @@ fn op_truncate(
       .create(create)
       .create_new(create_new)
       .write(true);
-    let f = open_options.open(&path)?;
-    f.set_len(len)?;
+    let f = open_options.open(&path).await?;
+    f.set_len(len).await?;
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 fn make_temp(
