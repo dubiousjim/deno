@@ -371,7 +371,7 @@ fn umask(mask: Option<u32>) -> u32 {
   use nix::sys::stat::mode_t;
   use nix::sys::stat::umask;
   use nix::sys::stat::Mode;
-  let r = if let Some(mask) = args.mask {
+  let r = if let Some(mask) = mask {
     // If mask provided, return previous
     umask(Mode::from_bits_truncate(mask as mode_t))
   } else {
@@ -403,7 +403,7 @@ fn op_umask(
     return Err(OpError::not_implemented());
   }
   #[cfg(unix)]
-  Ok(JsonOp::Sync(json!(umask(args.mask))
+  Ok(JsonOp::Sync(json!(umask(args.mask)))
 }
 
 #[derive(Deserialize)]
