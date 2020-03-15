@@ -10,7 +10,7 @@ use deno_core::*;
 use futures::future::FutureExt;
 use std::convert::{From, TryInto};
 use std::env::{current_dir, set_current_dir, temp_dir};
-use std::io; // io::{Result, Error, SeekFrom, copy} and io::ErrorKind (make_temp and windows chown)
+use std::io::{SeekFrom, Result as ioResult, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio;
@@ -22,7 +22,7 @@ use tokio;
  */
 
 use rand::{thread_rng, Rng};
-// use remove_dir_all::remove_dir_all;
+// use remove_dir_all::remove_dir_all; // TODO(jp)
 use utime::set_file_times;
 
 #[cfg(unix)]
@@ -269,10 +269,10 @@ fn op_seek(
     0 => {
       // require offset to be 63 bit unsigned
       let offset: u64 = offset.try_into()?;
-      io::SeekFrom::Start(offset)
+      SeekFrom::Start(offset)
     }
-    1 => io::SeekFrom::Current(offset),
-    2 => io::SeekFrom::End(offset),
+    1 => SeekFrom::Current(offset),
+    2 => SeekFrom::End(offset),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
@@ -652,7 +652,7 @@ fn op_copy_file(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_copy_file {} {}", from.display(), to.display());
-    // On *nix, Rust reports non-existent `from` as io::ErrorKind::InvalidInput
+    // On *nix, Rust reports non-existent `from` as std::io::ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
@@ -1122,7 +1122,7 @@ fn make_temp(
   prefix: Option<&str>,
   suffix: Option<&str>,
   is_dir: bool,
-) -> io::Result<PathBuf> {
+) -> ioResult<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
   let mut buf: PathBuf = match dir {
@@ -1156,7 +1156,7 @@ fn make_temp(
       Ok(())
     };
     match r {
-      Err(ref e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+      Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
       Ok(_) => return Ok(buf),
       Err(e) => return Err(e),
     }
