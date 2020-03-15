@@ -17,7 +17,6 @@ use tokio;
 
 /*
  * TODO(jp)
- * ErrBox::from ?? chown, futime, my_check_open_for_xxx
  * JSDoc for intermed dir modes for mkdir -p
  * Better tests for mkdir {mode}, with/without -p
  */
@@ -33,14 +32,14 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 #[cfg(unix)]
-fn get_mode(fd: RawFd) -> Result<OFlag, ErrBox> {
+fn get_mode(fd: RawFd) -> Result<OFlag, OpError> {
   let flags = fcntl(fd, FcntlArg::F_GETFL)?;
   let flags = OFlag::from_bits_truncate(flags);
   Ok(OFlag::O_ACCMODE & flags)
 }
 
 #[cfg(unix)]
-fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
@@ -49,12 +48,12 @@ fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
     let e = OpError::permission_denied(
       "run again with the --allow-write flag".to_string(),
     );
-    Err(ErrBox::from(e))
+    Err(e)
   }
 }
 
 #[cfg(unix)]
-fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
+fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   let fd = file.as_raw_fd();
   let mode = get_mode(fd)?;
   if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
@@ -63,7 +62,7 @@ fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, ErrBox> {
     let e = OpError::permission_denied(
       "run again with the --allow-read flag".to_string(),
     );
-    Err(ErrBox::from(e))
+    Err(e)
   }
 }
 
