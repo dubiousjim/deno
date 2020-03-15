@@ -16,6 +16,12 @@ use std::io; // io::{Result, Error, SeekFrom, copy} and io::ErrorKind (make_temp
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+/*
+ * TODO
+ * ErrBox::from ?? chown, futime, my_check_open_for_xxx
+ * JSDoc for intermed dir modes for mkdir -p
+ */
+
 use rand::{thread_rng, Rng};
 // use remove_dir_all::remove_dir_all;
 use utime::set_file_times;
@@ -441,14 +447,17 @@ fn op_mkdir(
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  let mode = args.mode.unwrap_or(0o777);
+  let mode = args.mode;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    debug!("op_mkdir {} {:o} {}", path.display(), mode.unwrap_or(0o777), args.recursive);
     if args.recursive {
+      if let Some(_) = tokio_fs::metadata(&path).await {
+        return Ok(json!({}))
+      }
       tokio_fs::create_dir_all(&path).await?;
     } else {
       tokio_fs::create_dir(&path).await?;
@@ -458,7 +467,7 @@ fn op_mkdir(
       use std::os::unix::fs::PermissionsExt;
       let metadata = tokio_fs::metadata(&path).await?;
       let mut permissions = metadata.permissions();
-      permissions.set_mode(mode);
+      permissions.set_mode(mode.unwrap_or(0o777));
       match tokio_fs::set_permissions(&path, permissions).await {
         Ok(()) => (),
         Err(e) => {
