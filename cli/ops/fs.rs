@@ -460,20 +460,13 @@ fn op_mkdir(
       let mut permissions = metadata.permissions();
       permissions.set_mode(mode);
       match tokio_fs::set_permissions(&path, permissions).await {
-        Ok(()) => (),
-        Err(_e) => {
+        Ok(()) => Ok(()),
+        Err(e) => {
           tokio_fs::remove_dir(path).await?;
-          // return Err(e);
-          ()
+          Err(e)
         }
       }
-    }
-    /*
-    let mut builder = std_fs::DirBuilder::new();
-    builder.recursive(args.recursive);
-    set_dir_permissions(&mut builder, mode);
-    builder.create(path)?;
-    */
+    }?;
     Ok(json!({}))
   };
 
