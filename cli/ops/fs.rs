@@ -487,20 +487,26 @@ fn op_chmod(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
-  blocking_json(is_sync, move || {
+  let fut = async move {
     // Still check file/dir exists on windows
-    let _metadata = fs::metadata(&path)?; // TOKIZE
+    let _metadata = tokio::fs::metadata(&path).await?;
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       debug!("op_chmod {} {:o}", path.display(), mode);
       let mut permissions = _metadata.permissions();
       permissions.set_mode(mode);
-      fs::set_permissions(&path, permissions)?; // TOKIZE
+      tokio::fs::set_permissions(&path, permissions).await?;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 ////////
@@ -665,7 +671,7 @@ macro_rules! to_seconds {
 
 #[inline(always)]
 fn get_stat_json(
-  metadata: fs::Metadata, // TOKIZE
+  metadata: fs::Metadata,
   maybe_name: Option<String>,
 ) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
@@ -738,16 +744,22 @@ fn op_stat(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      fs::symlink_metadata(&path)? // TOKIZE
+      tokio::fs::symlink_metadata(&path).await?
     } else {
-      fs::metadata(&path)? // TOKIZE
+      tokio::fs::metadata(&path).await?
     };
     get_stat_json(metadata, None)
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -930,12 +942,18 @@ fn op_link(
   state.check_write(&newname)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_link {} {}", oldname.display(), newname.display());
-    fs::hard_link(&oldname, &newname)?; // TOKIZE
+    tokio::fs::hard_link(&oldname, &newname).await?;
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -992,14 +1010,19 @@ fn op_read_link(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_read_link {}", path.display());
-    let path = fs::read_link(&path)?; // TOKIZE
+    let path = tokio::fs::read_link(&path).await?;
     let path_str = path.to_str().unwrap();
-
     Ok(json!(path_str))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
