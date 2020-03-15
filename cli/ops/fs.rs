@@ -1348,7 +1348,7 @@ fn op_fchmod(
 
   let tokio_file = match resource_holder.resource {
     // TODO(jp): save metadata instead of re-querying later?
-    StreamResource::FsFile(ref file, _metadata) => file,
+    StreamResource::FsFile(ref file, ref _metadata) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
   let file = futures::executor::block_on(tokio_file.try_clone())?;
@@ -1468,7 +1468,7 @@ fn op_fstat(
 
   let tokio_file = match resource_holder.resource {
     // TODO(jp): save metadata instead of re-querying later?
-    StreamResource::FsFile(ref file, _metadata) => file,
+    StreamResource::FsFile(ref file, ref _metadata) => file,
     _ => return Err(OpError::bad_resource_id()),
   };
   let file = futures::executor::block_on(tokio_file.try_clone())?;
