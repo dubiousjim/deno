@@ -461,7 +461,7 @@ fn op_mkdir(
     } else {
       tokio::fs::create_dir(&path).await?;
     }
-    if let Some(_) = args.mode {
+    if args.mode.is_some() {
       #[cfg(unix)]
       {
         use std::os::unix::fs::PermissionsExt;
