@@ -234,7 +234,7 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-  // op_open, notblocking_json
+  // op_open, FIXME
   let fut = async move {
     let fs_file = open_options.open(path).await?;
     let mut state = state_.borrow_mut();
@@ -301,7 +301,7 @@ fn op_seek(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // op_seek, notblocking_json
+  // op_seek, FIXME
   let fut = async move {
     debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
@@ -442,6 +442,8 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // op_mkdir
+  /*
   blocking_json(is_sync, move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     // #[allow(unused_mut)]
@@ -455,7 +457,7 @@ fn op_mkdir(
     builder.create(path)?;
     Ok(json!({}))
   })
-  /*
+  */
   let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     if args.recursive {
@@ -477,7 +479,7 @@ fn op_mkdir(
         let mut permissions = metadata.permissions();
         permissions.set_mode(mode);
         */
-        // we have to query (2 syscalls) and apply umask by hand
+        // we have to query (takes 2 syscalls) and apply umask by hand
         let permissions = PermissionsExt::from_mode(mode & !umask(None));
         match tokio_fs::set_permissions(&path, permissions).await {
           Ok(()) => (),
@@ -500,7 +502,6 @@ fn op_mkdir(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
-  */
 }
 
 #[derive(Deserialize)]
@@ -569,7 +570,7 @@ fn op_chown(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // CANTFIX
+  // CANTFIX, chown
   blocking_json(is_sync, move || {
     debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
     #[cfg(unix)]
@@ -658,7 +659,7 @@ fn op_copy_file(
   state.check_write(&to)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // FIXME, op_copy_file
   blocking_json(is_sync, move || {
     debug!("op_copy_file {} {}", from.display(), to.display());
     // On *nix, Rust reports non-existent `from` as io::ErrorKind::InvalidInput
@@ -809,7 +810,6 @@ fn op_realpath(
 
   state.check_read(&path)?;
 
-  // op_realpath, notblocking_json
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_realpath {}", path.display());
@@ -938,7 +938,7 @@ fn op_rename(
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // FIXME, op_rename
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if args.create_new {
@@ -1089,7 +1089,7 @@ fn op_truncate(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // FIXME, op_truncate
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
     let mut open_options = std_fs::OpenOptions::new();
@@ -1190,7 +1190,7 @@ fn op_make_temp_dir(
     .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // FIXME, op_make_temp_dir
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1225,7 +1225,7 @@ fn op_make_temp_file(
     .check_write(dir.clone().unwrap_or_else(env::temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // FIXME, op_make_temp_file
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1264,7 +1264,7 @@ fn op_utime(
   let mtime: u64 = args.mtime.try_into()?;
 
   let is_sync = args.promise_id.is_none();
-  // CANTFIX
+  // CANTFIX, utime
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, atime, mtime);
     set_file_times(args.path, atime, mtime)?;
@@ -1312,7 +1312,6 @@ fn op_ftruncate(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // op_ftruncate, notblocking_json
   let fut = async move {
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
@@ -1367,7 +1366,6 @@ fn op_fchmod(
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // op_fchmod, notblocking_json
   let fut = async move {
     #[cfg(unix)]
     {
@@ -1394,6 +1392,7 @@ fn op_fchmod(
 }
 
 ///////
+/*
 #[cfg(unix)]
 use nix::sys::stat::futimens;
 
@@ -1411,6 +1410,7 @@ fn fset_file_times(
   futimens(fd, &atime, &mtime).map_err(ErrBox::from)?;
   Ok(())
 }
+*/
 ///////
 
 #[derive(Deserialize)]
@@ -1450,16 +1450,21 @@ fn op_futime(
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // FIXME
+  // CANTFIX, op_futime
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
+      use nix::sys::stat::futimens;
+      use nix::sys::time::{TimeSpec, TimeValLike};
       let fd = my_check_open_for_writing(&file)?;
       // require times to be 63 bit unsigned
       let atime: u64 = args.atime.try_into()?;
       let mtime: u64 = args.mtime.try_into()?;
       debug!("op_futime {} {} {}", rid, atime, mtime);
-      fset_file_times(fd, atime, mtime)?;
+      // fset_file_times(fd, atime, mtime)?;
+      let atime = TimeSpec::seconds(atime as i64);
+      let mtime = TimeSpec::seconds(mtime as i64);
+      futimens(fd, &atime, &mtime)?; // .map_err(ErrBox::from)?;
     }
     Ok(json!({}))
   })
@@ -1497,7 +1502,7 @@ fn op_fstat(
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
-  // op_fstat, notblocking_json
+  // FIXME op_fstat, not blocking_json
   let fut = async move {
     #[cfg(unix)]
     {
