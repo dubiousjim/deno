@@ -103,7 +103,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fstat", s.stateful_json_op(op_fstat));
 }
 
-fn tokioOpenOptions(mode: Option<u32>) -> tokio::fs::OpenOptions {
+fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
   if let Some(mode) = mode {
     #[allow(unused_mut)]
     let mut std_options = std::fs::OpenOptions::new();
@@ -154,7 +154,7 @@ fn op_open(
   let state_ = state.clone();
   let gave_mode = args.mode.is_some();
 
-  let mut open_options = tokioOpenOptions(args.mode);
+  let mut open_options = tokio_open_options(args.mode);
 
   if let Some(options) = args.options {
     if options.read {
@@ -1116,7 +1116,7 @@ fn op_truncate(
       ));
     }
     debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = tokioOpenOptions(args.mode);
+    let mut open_options = tokio_open_options(args.mode);
     open_options
       .create(create)
       .create_new(create_new)
