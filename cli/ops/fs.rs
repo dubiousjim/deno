@@ -1058,8 +1058,8 @@ fn op_make_temp_file(
 struct UtimeArgs {
   promise_id: Option<u64>,
   path: String,
-  atime: u64,
-  mtime: u64,
+  atime: i64,
+  mtime: i64,
 }
 
 fn op_utime(
@@ -1069,13 +1069,16 @@ fn op_utime(
 ) -> Result<JsonOp, OpError> {
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  // require times to be 63 bit unsigned
+  let atime: u64 = args.atime.try_into()?;
+  let mtime: u64 = args.mtime.try_into()?;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
-    set_file_times(args.path, args.atime, args.mtime)?;
+    debug!("op_utime {} {} {}", args.path, atime, mtime);
+    set_file_times(args.path, atime, mtime)?;
     Ok(json!({}))
   })
 }
