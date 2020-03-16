@@ -30,23 +30,51 @@ interface TruncateArgs {
 export function truncateSync(
   path: string,
   len?: number,
+  options?: TruncateOptions
+): void;
+
+export function truncateSync(rid: number, len?: number): void;
+
+export function truncateSync(
+  path: string | number,
+  len?: number,
   options: TruncateOptions = {}
 ): void {
-  const args = checkOptions(options);
-  args.path = path;
-  args.len = coerceLen(len);
-  sendSync("op_truncate", args);
+  if (typeof path == "string") {
+    const args = checkOptions(options);
+    args.path = path;
+    args.len = coerceLen(len);
+    sendSync("op_truncate", args);
+  } else {
+    // for the ftruncate variant, we ignore the create option
+    const args = { rid: path, len: coerceLen(len), mode: options.mode };
+    sendSync("op_ftruncate", args);
+  }
 }
 
-export async function truncate(
+export function truncate(
   path: string,
+  len?: number,
+  options?: TruncateOptions
+): Promise<void>;
+
+export function truncate(rid: number, len?: number): Promise<void>;
+
+export async function truncate(
+  path: string | number,
   len?: number,
   options: TruncateOptions = {}
 ): Promise<void> {
-  const args = checkOptions(options);
-  args.path = path;
-  args.len = coerceLen(len);
-  await sendAsync("op_truncate", args);
+  if (typeof path == "string") {
+    const args = checkOptions(options);
+    args.path = path;
+    args.len = coerceLen(len);
+    await sendAsync("op_truncate", args);
+  } else {
+    // for the ftruncate variant, we ignore the create option
+    const args = { rid: path, len: coerceLen(len), mode: options.mode };
+    await sendAsync("op_ftruncate", args);
+  }
 }
 
 /** Check we have a valid combination of options.

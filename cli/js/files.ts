@@ -21,7 +21,12 @@ import {
   OpenMode
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
+import { chmod, chmodSync } from "./ops/fs/chmod.ts";
+import { stat, statSync } from "./ops/fs/stat.ts";
+import { FileInfo } from "./file_info.ts";
 import { sync, datasync } from "./ops/fs/sync.ts";
+import { truncate, truncateSync } from "./ops/fs/truncate.ts";
+import { utime, utimeSync } from "./ops/fs/utime.ts";
 
 export function openSync(path: string, options?: OpenOptions): File;
 export function openSync(path: string, openMode?: OpenMode): File;
@@ -118,6 +123,38 @@ export class File
 
   datasync(): void {
     datasync(this.rid);
+  }
+
+  truncate(len?: number): Promise<void> {
+    return truncate(this.rid, len);
+  }
+
+  truncateSync(len?: number): void {
+    return truncateSync(this.rid, len);
+  }
+
+  chmod(mode: number): Promise<void> {
+    return chmod(this.rid, mode);
+  }
+
+  chmodSync(mode: number): void {
+    return chmodSync(this.rid, mode);
+  }
+
+  utime(atime: number | Date, mtime: number | Date): Promise<void> {
+    return utime(this.rid, atime, mtime);
+  }
+
+  utimeSync(atime: number | Date, mtime: number | Date): void {
+    return utimeSync(this.rid, atime, mtime);
+  }
+
+  stat(): Promise<FileInfo> {
+    return stat(this.rid);
+  }
+
+  statSync(): FileInfo {
+    return statSync(this.rid);
   }
 }
 
