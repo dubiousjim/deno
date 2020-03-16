@@ -17,6 +17,43 @@ use tokio;
 
 use rand::{thread_rng, Rng};
 
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, RawFd};
+
+#[cfg(unix)]
+fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-write flag".to_string(),
+    );
+    Err(e)
+  }
+}
+
+#[cfg(unix)]
+fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-read flag".to_string(),
+    );
+    Err(e)
+  }
+}
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -41,6 +78,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
   i.register_op("op_cwd", s.stateful_json_op(op_cwd));
   i.register_op("op_utime", s.stateful_json_op(op_utime));
+  i.register_op("op_ftruncate", s.stateful_json_op(op_ftruncate));
+  i.register_op("op_fchmod", s.stateful_json_op(op_fchmod));
+  i.register_op("op_futime", s.stateful_json_op(op_futime));
+  i.register_op("op_fstat", s.stateful_json_op(op_fstat));
 }
 
 fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
@@ -1241,4 +1282,224 @@ fn op_cwd(
   let path = current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FTruncateArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  len: i64,
+}
+
+fn op_ftruncate(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: FTruncateArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  // require len to be 63 bit unsigned
+  let len: u64 = args.len.try_into()?;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource_holder.resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let is_sync = args.promise_id.is_none();
+  let fut = async move {
+    // Unix returns InvalidInput if fd was not opened for writing
+    // For consistency with Windows, we check explicitly
+    #[cfg(unix)]
+    my_check_open_for_writing(&file)?;
+    debug!("op_ftruncate {} {}", rid, len);
+    file.set_len(len).await?;
+    Ok(json!({}))
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FChmodArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  mode: u32,
+}
+
+fn op_fchmod(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::not_implemented());
+  }
+  let args: FChmodArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let mode = args.mode & 0o777;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource_holder.resource {
+    // TODO(jp): save metadata instead of re-querying later?
+    StreamResource::FsFile(ref file, ref _metadata) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let is_sync = args.promise_id.is_none();
+  let fut = async move {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      my_check_open_for_writing(&file)?;
+      debug!("op_fchmod {} {:o}", rid, mode);
+      let permissions = PermissionsExt::from_mode(mode);
+      file.set_permissions(permissions).await?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = mode; // avoid unused warning
+      let _ = file;
+    }
+    Ok(json!({}))
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FUtimeArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  atime: i64,
+  mtime: i64,
+}
+
+fn op_futime(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::not_implemented());
+  }
+  let args: FUtimeArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  // require times to be 63 bit unsigned
+  let atime: u64 = args.atime.try_into()?;
+  let mtime: u64 = args.mtime.try_into()?;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource_holder.resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    #[cfg(unix)]
+    {
+      use nix::sys::stat::futimens;
+      use nix::sys::time::{TimeSpec, TimeValLike};
+      let fd = my_check_open_for_writing(&file)?;
+      debug!("op_futime {} {} {}", rid, atime, mtime);
+      let atime = TimeSpec::seconds(atime as i64);
+      let mtime = TimeSpec::seconds(mtime as i64);
+      futimens(fd, &atime, &mtime)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = file; // avoid unused warning
+      let _ = atime;
+      let _ = mtime;
+    }
+    Ok(json!({}))
+  })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FStatArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fstat(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::not_implemented());
+  }
+  let args: FStatArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource_holder.resource {
+    // TODO(jp): save metadata instead of re-querying later?
+    StreamResource::FsFile(ref file, ref _metadata) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let is_sync = args.promise_id.is_none();
+  let fut = async move {
+    #[cfg(unix)]
+    {
+      my_check_open_for_reading(&file)?;
+      debug!("op_fstat {}", rid);
+      let metadata = file.metadata().await?;
+      get_stat_json(metadata, None)
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = file; // avoid unused warning
+      Ok(json!({}))
+    }
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
