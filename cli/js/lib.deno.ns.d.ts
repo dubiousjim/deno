@@ -910,7 +910,7 @@ declare namespace Deno {
   export interface MkdirOptions {
     /** Defaults to `false`. If set to `true`, means that any intermediate
      * directories will also be created (as with the shell command `mkdir -p`).
-     * Intermediate directories are created with the same permissions.
+     * Intermediate directories are created with default permissions.
      * When recursive is set to `true`, succeeds silently (without changing any
      * permissions) if a directory already exists at the path. */
     recursive?: boolean;

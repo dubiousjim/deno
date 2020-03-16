@@ -340,18 +340,50 @@ fn op_mkdir(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
-    let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(args.recursive);
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::DirBuilderExt;
-      builder.mode(mode);
+    if args.recursive {
+      // exit early if dir already exists, so that we don't
+      // try to apply mode and remove dir on failure
+      // like `mkdir -p`, we follow symlinks
+      let metadata = tokio::fs::metadata(&path).await;
+      if metadata.map_or(false, |m| m.is_dir()) {
+        return Ok(json!({}));
+      }
+      tokio::fs::create_dir_all(&path).await?;
+    } else {
+      tokio::fs::create_dir(&path).await?;
     }
-    builder.create(path)?;
+    if args.mode.is_some() {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        // we have to query (takes 2 syscalls) and apply umask by hand
+        let mode = mode & !umask(None);
+        // like `mkdir -p`, we permit u+wx regardless of umask
+        let mode = mode | 0o300;
+        let permissions = PermissionsExt::from_mode(mode);
+        match tokio::fs::set_permissions(&path, permissions).await {
+          Ok(()) => (),
+          Err(e) => {
+            // couldn't apply mode, so remove_dir then propagate error
+            // if dir already existed (and so might not be empty)
+            // we'll already have exited (if args.recursive) or failed
+            tokio::fs::remove_dir(path).await?;
+            return Err(OpError::from(e));
+          }
+        }
+      }
+    }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
