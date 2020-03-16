@@ -249,6 +249,23 @@ fn op_seek(
   }
 }
 
+#[cfg(unix)]
+fn umask(mask: Option<u32>) -> u32 {
+  use nix::sys::stat::mode_t;
+  use nix::sys::stat::umask;
+  use nix::sys::stat::Mode;
+  let r = if let Some(mask) = mask {
+    // If mask provided, return previous
+    umask(Mode::from_bits_truncate(mask as mode_t))
+  } else {
+    // If no mask provided, we query the current (requires two syscalls)
+    let prev = umask(Mode::from_bits_truncate(0o777));
+    let _ = umask(prev);
+    prev
+  };
+  r.bits() as u32
+}
+
 #[derive(Deserialize)]
 struct UmaskArgs {
   mask: Option<u32>,
@@ -266,24 +283,10 @@ fn op_umask(
   #[cfg(not(unix))]
   {
     let _ = args.mask; // avoid unused warning.
-    return Err(OpError::not_implemented());
+    Err(OpError::not_implemented())
   }
   #[cfg(unix)]
-  {
-    use nix::sys::stat::mode_t;
-    use nix::sys::stat::umask;
-    use nix::sys::stat::Mode;
-    let r = if let Some(mask) = args.mask {
-      // If mask provided, return previous.
-      umask(Mode::from_bits_truncate(mask as mode_t))
-    } else {
-      // If no mask provided, we query the current. Requires two syscalls.
-      let prev = umask(Mode::from_bits_truncate(0o777));
-      let _ = umask(prev);
-      prev
-    };
-    Ok(JsonOp::Sync(json!(r.bits() as u32)))
-  }
+  Ok(JsonOp::Sync(json!(umask(args.mask))))
 }
 
 #[derive(Deserialize)]
