@@ -22,7 +22,6 @@ test(async function readFileSuccess() {
 });
 
 test(async function readFileEncodeUtf8Success() {
-  console.error("jim2a", Deno.cwd(), testData);
   const data = await new Promise((res, rej) => {
     readFile(testData, { encoding: "utf8" }, (err, data) => {
       if (err) {
@@ -43,7 +42,6 @@ test(function readFileSyncSuccess() {
 });
 
 test(function readFileEncodeUtf8Success() {
-  console.error("jim2b", Deno.cwd(), testData);
   const data = readFileSync(testData, { encoding: "utf8" });
   assertEquals(typeof data, "string");
   assertEquals(data as string, "hello world");
