@@ -91,22 +91,7 @@ fn op_open(
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let state_ = state.clone();
 
-  let mut open_options = if let Some(mode) = args.mode {
-    #[allow(unused_mut)]
-    let mut std_options = std::fs::OpenOptions::new();
-    // mode only used if creating the file on Unix
-    // if not specified, defaults to 0o666
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::OpenOptionsExt;
-      std_options.mode(mode & 0o777);
-    }
-    #[cfg(not(unix))]
-    let _ = mode; // avoid unused warning
-    tokio::fs::OpenOptions::from(std_options)
-  } else {
-    tokio::fs::OpenOptions::new()
-  };
+  let mut open_options = tokio_open_options(args.mode);
   let mut create_new = false;
 
   if let Some(options) = args.options {
