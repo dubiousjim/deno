@@ -20,9 +20,7 @@ export async function testWalk(
       await t();
     } finally {
       chdir(origCwd);
-      console.error("begin cleanup for", fn.name);
-      remove(d, { recursive: true });
-      console.error("end cleanup for", fn.name);
+      await remove(d, { recursive: true });
     }
   }
   Deno.test({ skip, name: `[walk] ${name}`, fn });
