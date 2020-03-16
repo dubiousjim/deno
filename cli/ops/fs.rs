@@ -42,6 +42,25 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_utime", s.stateful_json_op(op_utime));
 }
 
+fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
+  if let Some(mode) = mode {
+    #[allow(unused_mut)]
+    let mut std_options = std::fs::OpenOptions::new();
+    // mode only used if creating the file on Unix
+    // if not specified, defaults to 0o666
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      std_options.mode(mode & 0o777);
+    }
+    #[cfg(not(unix))]
+    let _ = mode; // avoid unused warning
+    tokio::fs::OpenOptions::from(std_options)
+  } else {
+    tokio::fs::OpenOptions::new()
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
