@@ -788,6 +788,8 @@ declare namespace Deno {
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
     close(): void;
+    chmod(mode: number): Promise<void>;
+    chmodSync(mode: number): void;
   }
 
   /** An instance of `Deno.File` for `stdin`. */
@@ -1165,7 +1167,7 @@ declare namespace Deno {
    * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission. */
-  export function chmodSync(path: string, mode: number): void;
+  export function chmodSync(path: string | number, mode: number): void;
 
   /** Changes the permission of a specific file/directory of specified path.
    * Ignores the process's umask.
@@ -1193,7 +1195,7 @@ declare namespace Deno {
    * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission. */
-  export function chmod(path: string, mode: number): Promise<void>;
+  export function chmod(path: string | number, mode: number): Promise<void>;
 
   /** Synchronously change owner of a regular file or directory. This functionality
    * is not available on Windows.

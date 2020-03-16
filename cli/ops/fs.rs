@@ -42,6 +42,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
   i.register_op("op_cwd", s.stateful_json_op(op_cwd));
   i.register_op("op_utime", s.stateful_json_op(op_utime));
+  i.register_op("op_fchmod", s.stateful_json_op(op_fchmod));
 }
 
 fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
@@ -1106,5 +1107,64 @@ fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
       "run again with the --allow-read flag".to_string(),
     );
     Err(e)
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FChmodArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  mode: u32,
+}
+
+fn op_fchmod(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::not_implemented());
+  }
+  let args: FChmodArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let mode = args.mode & 0o777;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource_holder.resource {
+    // TODO(jp): save metadata instead of re-querying later?
+    StreamResource::FsFile(ref file, ref _metadata) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let is_sync = args.promise_id.is_none();
+  let fut = async move {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      check_open_for_writing(&file)?;
+      debug!("op_fchmod {} {:o}", rid, mode);
+      let permissions = PermissionsExt::from_mode(mode);
+      file.set_permissions(permissions).await?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = mode; // avoid unused warning
+      let _ = file;
+    }
+    Ok(json!({}))
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
   }
 }

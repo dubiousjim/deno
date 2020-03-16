@@ -21,6 +21,7 @@ import {
   OpenMode,
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
+import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 
 export function openSync(path: string, options?: OpenOptions): File;
 export function openSync(path: string, openMode?: OpenMode): File;
@@ -109,6 +110,14 @@ export class File
 
   close(): void {
     close(this.rid);
+  }
+
+  chmod(mode: number): Promise<void> {
+    return chmod(this.rid, mode);
+  }
+
+  chmodSync(mode: number): void {
+    return chmodSync(this.rid, mode);
   }
 }
 
