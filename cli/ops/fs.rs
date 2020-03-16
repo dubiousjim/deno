@@ -410,23 +410,30 @@ fn op_chmod(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_chmod {} {:o}", path.display(), mode);
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions)?;
+      tokio::fs::set_permissions(&path, permissions).await?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
       // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path)?;
+      let _metadata = tokio::fs::metadata(&path).await?;
       Err(OpError::not_implemented())
     }
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -489,19 +496,26 @@ fn op_remove(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    let metadata = std::fs::symlink_metadata(&path)?;
+  let fut = async move {
+    let metadata = tokio::fs::symlink_metadata(&path).await?;
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
-      std::fs::remove_file(&path)?;
+      tokio::fs::remove_file(&path).await?;
     } else if recursive {
-      std::fs::remove_dir_all(&path)?;
+      tokio::fs::remove_dir_all(&path).await?;
     } else {
-      std::fs::remove_dir(&path)?;
+      tokio::fs::remove_dir(&path).await?;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -529,45 +543,46 @@ fn op_copy_file(
   state.check_write(&to)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_copy_file {} {}", from.display(), to.display());
     if create && !create_new {
       if cfg!(unix) {
         // On *nix, Rust reports non-existent `from` as std::io::ErrorKind::InvalidInput
         // See https://github.com/rust-lang/rust/issues/54800
         // Once the issue is resolved, we should remove this check
-        std::fs::metadata(&from)?;
+        tokio::fs::metadata(&from).await?;
       }
       // default, most efficient version -- data never copied out of kernel space
       // returns size of from as u64 (we ignore)
       // NOTE: if `to` is a dangling symlink, this will create its target and "copy through" to it
       // Python's shutil.copy and Node's fs.copyFileSync behave the same
       // `cp -T` on the other hand will fail
-      std::fs::copy(&from, &to)?;
+      tokio::fs::copy(&from, &to).await?;
     } else {
-      let mut from_file = std::fs::OpenOptions::new().read(true).open(&from)?;
-      let from_meta = from_file.metadata()?;
+      let mut from_file =
+        tokio::fs::OpenOptions::new().read(true).open(&from).await?;
+      let from_meta = from_file.metadata().await?;
       if cfg!(unix) && from_meta.is_dir() {
         // when copyFile("dir", ...), prioritize "Is a directory" error for `from`
         // over NotFound (from !create) or AlreadyExists (from createNew) errors for `to`
         return Err(OpError::other("Is a directory (os error 21)".to_string()));
       }
-      let mut open_options = std::fs::OpenOptions::new();
+      let mut open_options = tokio::fs::OpenOptions::new();
       open_options
         .create(create)
         .create_new(create_new)
         .truncate(true)
         .write(true);
-      let mut to_file = match open_options.open(&to) {
+      let mut to_file = match open_options.open(&to).await {
         Err(e)
           if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
         {
-          match std::fs::metadata(&to) {
+          match tokio::fs::metadata(&to).await {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
               // `to` is dangling symlink
               // we make copyFile behave the same as on its fast path
               open_options.create_new(false);
-              open_options.open(to)?
+              open_options.open(to).await?
             }
             _ => return Err(OpError::from(e)),
           }
@@ -576,7 +591,7 @@ fn op_copy_file(
           if cfg!(windows)
             && create_new
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && std::fs::metadata(to).map_or(false, |m| m.is_dir()) =>
+            && tokio::fs::metadata(to).await.map_or(false, |m| m.is_dir()) =>
         {
           // alternately, "The file exists. (os error 80)"
           return Err(OpError::already_exists(
@@ -588,11 +603,18 @@ fn op_copy_file(
         Ok(f) => f,
       };
       // returns size of from as u64 (we ignore)
-      std::io::copy(&mut from_file, &mut to_file)?;
-      to_file.set_permissions(from_meta.permissions())?;
+      tokio::io::copy(&mut from_file, &mut to_file).await?;
+      to_file.set_permissions(from_meta.permissions()).await?;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 macro_rules! to_seconds {
@@ -679,15 +701,22 @@ fn op_stat(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      std::fs::symlink_metadata(&path)?
+      tokio::fs::symlink_metadata(&path).await?
     } else {
-      std::fs::metadata(&path)?
+      tokio::fs::metadata(&path).await?
     };
     get_stat_json(metadata, None)
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -708,18 +737,25 @@ fn op_realpath(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = std::fs::canonicalize(&path)?;
+    let realpath = tokio::fs::canonicalize(&path).await?;
     let mut realpath_str =
       realpath.to_str().unwrap().to_owned().replace("\\", "/");
     if cfg!(windows) {
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
     Ok(json!(realpath_str))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -740,23 +776,27 @@ fn op_read_dir(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_read_dir {}", path.display());
     let mut entries = Vec::new();
-    let stream = std::fs::read_dir(path)?;
-    for entry in stream {
-      let entry: std::fs::DirEntry = entry?;
-      // let metadata = entry.metadata().unwrap();
-      let metadata = entry.metadata()?;
+    let mut stream = tokio::fs::read_dir(path).await?;
+    while let Some(entry) = stream.next_entry().await? {
+      let metadata = entry.metadata().await?;
       // Not all filenames can be encoded as UTF-8. Skip those for now.
       if let Some(filename) = entry.file_name().to_str() {
         let filename = Some(filename.to_owned());
-        // entries.push(get_stat_json(metadata, filename).unwrap());
         entries.push(get_stat_json(metadata, filename)?);
       }
     }
     Ok(json!({ "entries": entries }))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -783,23 +823,25 @@ fn op_rename(
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if create_new {
       // like `mv -Tn`, we don't follow symlinks
-      let old_meta = std::fs::symlink_metadata(&oldpath)?;
+      let old_meta = tokio::fs::symlink_metadata(&oldpath).await?;
       if cfg!(unix) && old_meta.is_dir() {
         // on Unix, mv from dir to file always fails, but to emptydir is ok
-        std::fs::create_dir(&newpath)?;
+        tokio::fs::create_dir(&newpath).await?;
       } else {
         // on Windows, mv from dir to dir always fails, but to file is ok
-        let mut open_options = std::fs::OpenOptions::new();
+        let mut open_options = tokio::fs::OpenOptions::new();
         open_options.write(true).create_new(true);
-        if let Err(e) = open_options.open(&newpath) {
+        if let Err(e) = open_options.open(&newpath).await {
           // if newpath.is_dir(), prefer to fail with AlreadyExists
           if cfg!(windows)
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
+            && tokio::fs::metadata(&newpath)
+              .await
+              .map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
             return Err(OpError::already_exists("Cannot create a file when that file already exists. (os error 183)".to_string()));
@@ -808,9 +850,16 @@ fn op_rename(
         }
       }
     }
-    std::fs::rename(&oldpath, &newpath)?;
+    tokio::fs::rename(&oldpath, &newpath).await?;
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -834,11 +883,18 @@ fn op_link(
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_link {} {}", oldpath.display(), newpath.display());
-    std::fs::hard_link(&oldpath, &newpath)?;
+    tokio::fs::hard_link(&oldpath, &newpath).await?;
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -861,12 +917,12 @@ fn op_symlink(
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_symlink {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
     {
-      use std::os::unix::fs::symlink;
-      symlink(&oldpath, &newpath)?;
+      use tokio::fs::os::unix::symlink;
+      symlink(&oldpath, &newpath).await?;
       Ok(json!({}))
     }
     // TODO Implement symlink, use type for Windows
@@ -877,7 +933,14 @@ fn op_symlink(
       let _ = oldpath; // avoid unused warning
       Err(OpError::not_implemented())
     }
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -898,13 +961,20 @@ fn op_read_link(
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_read_link {}", path.display());
-    let path = std::fs::read_link(&path)?;
+    let path = tokio::fs::read_link(&path).await?;
     let path_str = path.to_str().unwrap();
 
     Ok(json!(path_str))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -933,30 +1003,21 @@ fn op_truncate(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let fut = async move {
     debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = std::fs::OpenOptions::new();
-    if let Some(mode) = args.mode {
-      // mode only used if creating the file on Unix
-      // if not specified, defaults to 0o666
-      #[cfg(unix)]
-      {
-        use std::os::unix::fs::OpenOptionsExt;
-        open_options.mode(mode & 0o777);
-      }
-      #[cfg(not(unix))]
-      let _ = mode; // avoid unused warning
-    }
+    let mut open_options = tokio_open_options(args.mode);
     open_options
       .create(create)
       .create_new(create_new)
       .write(true);
-    let file = match open_options.open(&path) {
+    let mut file = match open_options.open(&path).await {
       Err(e)
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && std::fs::metadata(path).map_or(false, |m| m.is_dir()) =>
+          && tokio::fs::metadata(&path)
+            .await
+            .map_or(false, |m| m.is_dir()) =>
       {
         // alternately, "The file exists. (os error 80)"
         return Err(OpError::already_exists(
@@ -967,9 +1028,16 @@ fn op_truncate(
       Err(e) => return Err(OpError::from(e)),
       Ok(f) => f,
     };
-    file.set_len(len)?;
+    file.set_len(len).await?;
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 fn make_temp(
