@@ -141,6 +141,12 @@ fn op_open(
     let create = options.create;
     let create_new = options.create_new;
 
+    if args.mode.is_some() && !(create || create_new) {
+      return Err(OpError::type_error(
+        "specified mode without allowing file creation".to_string(),
+      ));
+    }
+
     if options.read {
       state.check_read(&path)?;
     }
@@ -1066,6 +1072,12 @@ fn op_truncate(
   let len: u64 = args.len.try_into()?;
   let create = args.create;
   let create_new = args.create_new;
+
+  if args.mode.is_some() && !(create || create_new) {
+    return Err(OpError::type_error(
+      "specified mode without allowing file creation".to_string(),
+    ));
+  }
 
   state.check_write(&path)?;
 
