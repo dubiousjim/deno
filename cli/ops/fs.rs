@@ -153,6 +153,10 @@ fn op_open(
 
     if options.write || options.append {
       state.check_write(&path)?;
+      // require --allow-read to check whether `path` already exists
+      if !create || create_new {
+        state.check_read(&path)?;
+      }
     }
 
     open_options
@@ -168,8 +172,15 @@ fn op_open(
       "r" => {
         state.check_read(&path)?;
       }
-      "w" | "a" | "x" => {
+      "w" | "a" => {
         state.check_write(&path)?;
+        // these modes don't check whether `path` already exists
+        // so --allow-read isn't required
+      }
+      "x" => {
+        state.check_write(&path)?;
+        // require --allow-read to check whether `path` already exists
+        state.check_read(&path)?;
       }
       &_ => {
         state.check_read(&path)?;
@@ -640,6 +651,10 @@ fn op_copy_file(
 
   state.check_read(&from)?;
   state.check_write(&to)?;
+  // require --allow-read to check whether `to` already exists
+  if !create || create_new {
+    state.check_read(&to)?;
+  }
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -909,6 +924,10 @@ fn op_rename(
   state.check_read(&oldpath)?;
   state.check_write(&oldpath)?;
   state.check_write(&newpath)?;
+  // require --allow-read to check whether `newpath` already exists
+  if create_new {
+    state.check_read(&newpath)?;
+  }
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1080,6 +1099,10 @@ fn op_truncate(
   }
 
   state.check_write(&path)?;
+  // require --allow-read to check whether `path` already exists
+  if !create || create_new {
+    state.check_read(&path)?;
+  }
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
