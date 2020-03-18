@@ -1365,7 +1365,8 @@ declare namespace Deno {
    *       Deno.copyFileSync("from.txt", "to.txt");
    *
    * Requires `allow-read` permission on fromPath.
-   * Requires `allow-write` permission on toPath. */
+   * Requires `allow-write` permission on toPath, and `allow-read` if create is
+   * `false` or createNew is `true`. */
   export function copyFileSync(
     fromPath: string,
     toPath: string,
@@ -1379,7 +1380,8 @@ declare namespace Deno {
    *       await Deno.copyFile("from.txt", "to.txt");
    *
    * Requires `allow-read` permission on fromPath.
-   * Requires `allow-write` permission on toPath. */
+   * Requires `allow-write` permission on toPath, and `allow-read` if create is
+   * `false` or createNew is `true`. */
   export function copyFile(
     fromPath: string,
     toPath: string,
@@ -1517,7 +1519,8 @@ declare namespace Deno {
    *       const data = encoder.encode("Hello world\n");
    *       Deno.writeFileSync("hello.txt", data);
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission, and `allow-read` if create is `false`
+   * or createNew is `true`. */
   export function writeFileSync(
     path: string,
     data: Uint8Array,
@@ -1531,7 +1534,8 @@ declare namespace Deno {
    *       const data = encoder.encode("Hello world\n");
    *       await Deno.writeFile("hello.txt", data);
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission, and `allow-read` if create is `false`
+   * or createNew is `true`. */
   export function writeFile(
     path: string,
     data: Uint8Array,
@@ -1713,7 +1717,8 @@ declare namespace Deno {
    *
    *       Deno.truncateSync("hello.txt", 10);
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission, and `allow-read` if create is `false`
+   * or createNew is `true`. */
   export function truncateSync(
     path: string,
     len?: number,
@@ -1726,7 +1731,8 @@ declare namespace Deno {
    *
    *       await Deno.truncate("hello.txt", 10);
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission, and `allow-read` if create is `false`
+   * or createNew is `true`. */
   export function truncate(
     path: string,
     len?: number,
