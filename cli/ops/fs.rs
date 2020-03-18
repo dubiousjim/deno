@@ -461,6 +461,11 @@ fn op_mkdir(
       #[cfg(unix)]
       {
         use std::os::unix::fs::PermissionsExt;
+        /*
+        let metadata = tokio::fs::metadata(&path).await?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(mode);
+        */
         // we have to query (takes 2 syscalls) and apply umask by hand
         let mode = mode & !umask(None);
         // like `mkdir -p`, we permit u+wx regardless of umask
@@ -514,6 +519,11 @@ fn op_chmod(
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
+      /*
+      let metadata = tokio::fs::metadata(&path).await?;
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(mode);
+      */
       let permissions = PermissionsExt::from_mode(mode);
       tokio::fs::set_permissions(&path, permissions).await?;
       Ok(json!({}))
@@ -1374,6 +1384,11 @@ fn op_fchmod(
       use std::os::unix::fs::PermissionsExt;
       my_check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
+      /*
+      let metadata = file.metadata().await?;
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(mode);
+      */
       let permissions = PermissionsExt::from_mode(mode);
       file.set_permissions(permissions).await?;
     }
