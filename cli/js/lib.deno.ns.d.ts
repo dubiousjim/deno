@@ -1075,6 +1075,10 @@ declare namespace Deno {
     /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
      * allowed to exist at the target location. */
     createNew?: boolean;
+    /** Sets the option to allow overwriting existing file. Note that setting
+     * `{ ..., clobber: false }` has the same effect as
+     * `{ ..., createNew: true }`. */
+    clobber?: boolean;
   }
 
   /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
