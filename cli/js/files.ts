@@ -184,5 +184,26 @@ function checkOpenOptions(options: OpenOptions): OpenOptions {
     );
   }
 
+  if (options.clobber) {
+    if (options.createNew) {
+      throw new Error("'clobber' option incompatible with 'createNew' option");
+    } else if (!writeOrAppend) {
+      throw new Error("'clobber' option requires 'write' or 'append' option");
+    }
+  } else if (options.clobber === false) {
+    if (!createOrCreateNew && writeOrAppend) {
+      throw new Error(
+        "disabling 'clobber', 'create', and 'createNew' options requires read-only access"
+      );
+    } else if (options.create) {
+      if (options.createNew === false) {
+        throw new Error(
+          "when option 'create' is true, one of options 'clobber' or 'createNew' is implied"
+        );
+      }
+      return { ...options, createNew: true };
+    }
+  }
+
   return options;
 }
