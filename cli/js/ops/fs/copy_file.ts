@@ -3,6 +3,7 @@ import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 export interface CopyFileOptions {
   createNew?: boolean;
+  clobber?: boolean;
   create?: boolean;
 }
 
@@ -39,8 +40,24 @@ export async function copyFile(
  *  @internal
  */
 function checkOptions(options: CopyFileOptions): CopyFileArgs {
-  const createNew = options.createNew;
+  let createNew = options.createNew;
   const create = options.create;
+  if (options.clobber) {
+    if (createNew) {
+      throw new Error("'clobber' option incompatible with 'createNew' option");
+    }
+  } else if (options.clobber === false) {
+    if (create !== false) {
+      if (createNew === false) {
+        throw new Error("one of options 'clobber' or 'createNew' is implied");
+      }
+      createNew = true;
+    } else if (!createNew) {
+      throw new Error(
+        "one of 'clobber', 'create', or 'createNew' options is required"
+      );
+    }
+  }
   return {
     ...options,
     createNew: !!createNew,
