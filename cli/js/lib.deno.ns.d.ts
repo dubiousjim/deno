@@ -1625,6 +1625,10 @@ declare namespace Deno {
      * allowed to exist at the target location. When createNew is set to `true`,
      * create is ignored. */
     createNew?: boolean;
+    /** Sets the option to allow overwriting existing file. Note that setting
+     * `{ ..., clobber: false, create: true }` has the same effect as
+     * `{ ..., createNew: true }`. */
+    clobber?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
