@@ -8,6 +8,7 @@ export interface OpenOptions {
   truncate?: boolean;
   create?: boolean;
   createNew?: boolean;
+  clobber?: boolean;
   mode?: number;
 }
 
