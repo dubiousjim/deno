@@ -493,9 +493,9 @@ fn op_copy_file(
       }
       let mut open_options = std::fs::OpenOptions::new();
       open_options
-        .truncate(true)
         .create(create)
         .create_new(create_new)
+        .truncate(true)
         .write(true);
       let mut to_file = match open_options.open(&to) {
         Err(e)
@@ -505,8 +505,7 @@ fn op_copy_file(
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
               // `to` is dangling symlink
               // we make copyFile behave the same as on its fast path
-              let mut open_options = std::fs::OpenOptions::new();
-              open_options.truncate(true).create(create).write(true);
+              open_options.create_new(false);
               open_options.open(to)?
             }
             _ => return Err(OpError::from(e)),
