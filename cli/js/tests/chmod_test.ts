@@ -164,7 +164,7 @@ unitTest(
 
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode, 0o777);
   }
 );
 
@@ -184,7 +184,7 @@ unitTest(
 
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode, 0o777);
   }
 );
 
