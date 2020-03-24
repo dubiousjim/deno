@@ -625,8 +625,8 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    let metadata = tokio::fs::symlink_metadata(&path).await?;
     debug!("op_remove {} {}", path.display(), recursive);
+    let metadata = tokio::fs::symlink_metadata(&path).await?;
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
       tokio::fs::remove_file(&path).await?;
