@@ -90,7 +90,7 @@ unitTest(
     file.close();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "win") {
-      assertEquals(pathInfo.mode!, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode, 0o626 & ~Deno.umask());
     }
   }
 );
@@ -109,7 +109,7 @@ unitTest(
     file.close();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "win") {
-      assertEquals(pathInfo.mode!, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode, 0o626 & ~Deno.umask());
     }
   }
 );
