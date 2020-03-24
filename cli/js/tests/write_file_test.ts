@@ -348,3 +348,111 @@ unitTest(
     assert(caughtError);
   }
 );
+
+unitTest(
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  function writeFileSyncLinks(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    const file = testDir + "/file";
+    Deno.mkdirSync(dir);
+    Deno.createSync(file).close();
+    const fileLink = testDir + "/fileLink";
+    const dirLink = testDir + "/dirLink";
+    const danglingLink = testDir + "/danglingLink";
+    Deno.symlinkSync(file, fileLink);
+    Deno.symlinkSync(dir, dirLink);
+    Deno.symlinkSync(testDir + "/nonexistent", danglingLink);
+    let caughtError = false;
+    try {
+      Deno.writeFileSync(fileLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(dirLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(danglingLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(dirLink, data);
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    // should succeed
+    Deno.writeFileSync(fileLink, data);
+    Deno.writeFileSync(danglingLink, data);
+  }
+);
+
+unitTest(
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  async function writeFileLinks(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    const file = testDir + "/file";
+    Deno.mkdirSync(dir);
+    Deno.createSync(file).close();
+    const fileLink = testDir + "/fileLink";
+    const dirLink = testDir + "/dirLink";
+    const danglingLink = testDir + "/danglingLink";
+    Deno.symlinkSync(file, fileLink);
+    Deno.symlinkSync(dir, dirLink);
+    Deno.symlinkSync(testDir + "/nonexistent", danglingLink);
+    let caughtError = false;
+    try {
+      await Deno.writeFile(fileLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(dirLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(danglingLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(dirLink, data);
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    // should succeed
+    await Deno.writeFile(fileLink, data);
+    await Deno.writeFile(danglingLink, data);
+  }
+);
