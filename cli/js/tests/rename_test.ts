@@ -27,27 +27,6 @@ function assertDirectory(path: string, mode?: number): void {
   }
 }
 
-/*
-function assertLink(path: string, valid: boolean): void {
-  const info = Deno.lstatSync(path);
-  assert(info.isSymlink());
-  let caughtErr = false;
-  let info;
-  try {
-    info = Deno.statSync(path);
-  } catch (e) {
-    caughtErr = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  if (valid) {
-    assert(!caughtErr);
-  } else {
-    assert(caughtErr);
-    assertEquals(info, undefined);
-  }
-}
-*/
-
 unitTest(
   { perms: { read: true, write: true } },
   function renameSyncSuccess(): void {
