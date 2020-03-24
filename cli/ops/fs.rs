@@ -719,6 +719,18 @@ fn op_copy_file(
             _ => return Err(OpError::from(e)),
           }
         }
+        Err(e)
+          if cfg!(windows)
+            && create_new
+            && e.kind() == std::io::ErrorKind::PermissionDenied
+            && tokio::fs::metadata(to).await.map_or(false, |m| m.is_dir()) =>
+        {
+          // alternately, "The file exists. (os error 80)"
+          return Err(OpError::already_exists(
+            "Cannot create a file when that file already exists. (os error 183)"
+              .to_string(),
+          ));
+        }
         Err(e) => return Err(OpError::from(e)),
         Ok(f) => f,
       };
