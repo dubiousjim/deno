@@ -690,6 +690,9 @@ fn op_copy_file(
       // Python's shutil.copy and Node's fs.copyFileSync behave the same
       // `cp -T` on the other hand will fail
       tokio::fs::copy(&from, &to).await?;
+      // FIXME: next 2 lines shouldn't be necessary, but it seems they are with tokio
+      let from_meta = tokio::fs::metadata(&from).await?;
+      tokio::fs::set_permissions(to, from_meta.permissions()).await?;
     } else {
       let mut from_file =
         tokio::fs::OpenOptions::new().read(true).open(&from).await?;
