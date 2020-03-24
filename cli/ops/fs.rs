@@ -447,8 +447,8 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    let metadata = std::fs::symlink_metadata(&path)?;
     debug!("op_remove {} {}", path.display(), recursive);
+    let metadata = std::fs::symlink_metadata(&path)?;
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
       std::fs::remove_file(&path)?;
