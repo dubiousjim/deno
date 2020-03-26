@@ -103,7 +103,7 @@ unitTest(
     const path = nested + "/dir";
     Deno.mkdirSync(path, { mode: 0o737, recursive: true });
     assertDirectory(path, 0o737);
-    assertDirectory(nested, 0o737);
+    assertDirectory(nested, 0o777);
   }
 );
 
@@ -114,7 +114,7 @@ unitTest(
     const path = nested + "/dir";
     await Deno.mkdir(path, { mode: 0o737, recursive: true });
     assertDirectory(path, 0o737);
-    assertDirectory(nested, 0o737);
+    assertDirectory(nested, 0o777);
   }
 );
 
