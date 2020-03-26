@@ -909,7 +909,7 @@ fn op_truncate(
       .create(create)
       .create_new(create_new)
       .write(true);
-    let mut file = match open_options.open(&path) {
+    let file = match open_options.open(&path) {
       Err(e)
         if cfg!(windows)
           && create_new
