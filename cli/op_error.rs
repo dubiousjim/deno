@@ -284,7 +284,9 @@ impl From<&ReadlineError> for OpError {
       Eof => ErrorKind::UnexpectedEof,
       Interrupted => ErrorKind::Interrupted,
       #[cfg(unix)]
-      Errno(err) => return (*err).into(),
+      // FIXME breaks when upgrading to nix 0.17
+      Errno(err) => // return (*err).into(),
+        return OpError::other(err.to_string()),
       _ => unimplemented!(),
     };
 
