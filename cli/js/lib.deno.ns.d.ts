@@ -1430,10 +1430,16 @@ declare namespace Deno {
     /** Defaults to `false`. If set to `true`, will append to a file instead of
      * overwriting previous contents. */
     append?: boolean;
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
-    /** Permissions always applied to file. */
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * Ignored on Windows. */
     mode?: number;
   }
 
@@ -1444,8 +1450,7 @@ declare namespace Deno {
    *       const data = encoder.encode("Hello world\n");
    *       Deno.writeFileSync("hello.txt", data);
    *
-   * Requires `allow-write` permission, and `allow-read` if create is `false`.
-   */
+   * Requires `allow-write` permission. */
   export function writeFileSync(
     path: string,
     data: Uint8Array,
@@ -1459,8 +1464,7 @@ declare namespace Deno {
    *       const data = encoder.encode("Hello world\n");
    *       await Deno.writeFile("hello.txt", data);
    *
-   * Requires `allow-write` permission, and `allow-read` if create is `false`.
-   */
+   * Requires `allow-write` permission. */
   export function writeFile(
     path: string,
     data: Uint8Array,
