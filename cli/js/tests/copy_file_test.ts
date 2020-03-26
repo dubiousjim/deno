@@ -23,9 +23,7 @@ function assertFile(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
   assert(info.isFile());
   if (Deno.build.os !== "win" && mode !== undefined) {
-    // when writeFile is reimplemented in terms of open, it will respect umask
-    // assertEquals(info.mode, mode & ~Deno.umask());
-    assertEquals(info.mode! & 0o777, mode);
+    assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
   }
 }
 
