@@ -548,67 +548,53 @@ fn op_copy_file(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_copy_file {} {}", from.display(), to.display());
-    if create && !create_new {
-      if cfg!(unix) {
-        // On *nix, Rust reports non-existent `from` as std::io::ErrorKind::InvalidInput
-        // See https://github.com/rust-lang/rust/issues/54800
-        // Once the issue is resolved, we should remove this check
-        tokio::fs::metadata(&from).await?;
-      }
-      // default, most efficient version -- data never copied out of kernel space
-      // returns size of from as u64 (we ignore)
-      // NOTE: if `to` is a dangling symlink, this will create its target and "copy through" to it
-      // Python's shutil.copy and Node's fs.copyFileSync behave the same
-      // `cp -T` on the other hand will fail
-      tokio::fs::copy(&from, &to).await?;
-    } else {
-      let mut from_file =
-        tokio::fs::OpenOptions::new().read(true).open(&from).await?;
-      let from_meta = from_file.metadata().await?;
-      if cfg!(unix) && from_meta.is_dir() {
-        // when copyFile("dir", ...), prioritize "Is a directory" error for `from`
-        // over NotFound (from !create) or AlreadyExists (from createNew) errors for `to`
-        return Err(OpError::other("Is a directory (os error 21)".to_string()));
-      }
-      let mut open_options = tokio::fs::OpenOptions::new();
-      open_options
-        .create(create)
-        .create_new(create_new)
-        .truncate(true)
-        .write(true);
-      let mut to_file = match open_options.open(&to).await {
-        Err(e)
-          if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
-        {
-          match tokio::fs::metadata(&to).await {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-              // `to` is dangling symlink
-              // we make copyFile behave the same as on its fast path
-              open_options.create_new(false);
-              open_options.open(to).await?
-            }
-            _ => return Err(OpError::from(e)),
-          }
-        }
-        Err(e)
-          if cfg!(windows)
-            && create_new
-            && e.kind() == std::io::ErrorKind::PermissionDenied
-            && tokio::fs::metadata(to).await.map_or(false, |m| m.is_dir()) =>
-        {
-          // alternately, "The file exists. (os error 80)"
-          return Err(OpError::already_exists(
-            "Cannot create a file when that file already exists. (os error 183)"
-              .to_string(),
-          ));
-        }
-        Err(e) => return Err(OpError::from(e)),
-        Ok(f) => f,
-      };
-      // returns size of from as u64 (we ignore)
-      tokio::io::copy(&mut from_file, &mut to_file).await?;
-      to_file.set_permissions(from_meta.permissions()).await?;
+    let mut from_file =
+      tokio::fs::OpenOptions::new().read(true).open(&from).await?;
+    let from_meta = from_file.metadata().await?;
+    if cfg!(unix) && from_meta.is_dir() {
+      // when copyFile("dir", ...), prioritize "Is a directory" error for `from`
+      // over NotFound (from !create) or AlreadyExists (from createNew) errors for `to`
+      return Err(OpError::other("Is a directory (os error 21)".to_string()));
     }
+    let mut open_options = tokio::fs::OpenOptions::new();
+    open_options
+      .create(create)
+      .create_new(create_new)
+      .truncate(true)
+      .write(true);
+    let mut to_file = match open_options.open(&to).await {
+      Err(e) if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists => {
+        match tokio::fs::metadata(&to).await {
+          Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // `to` is dangling symlink
+            // we handle the same as std::fs::copy does
+            // namely, create the target and "copy through" to it
+            // Python's shutil.copy and Node's fs.copyFileSync do the same
+            // OTOH, `cp -T` in shell will fail when target is dangling symlink
+            open_options.create_new(false);
+            open_options.open(to).await?
+          }
+          _ => return Err(OpError::from(e)),
+        }
+      }
+      Err(e)
+        if cfg!(windows)
+          && create_new
+          && e.kind() == std::io::ErrorKind::PermissionDenied
+          && tokio::fs::metadata(to).await.map_or(false, |m| m.is_dir()) =>
+      {
+        // alternately, "The file exists. (os error 80)"
+        return Err(OpError::already_exists(
+          "Cannot create a file when that file already exists. (os error 183)"
+            .to_string(),
+        ));
+      }
+      Err(e) => return Err(OpError::from(e)),
+      Ok(f) => f,
+    };
+    // returns size of from as u64 (we ignore)
+    tokio::io::copy(&mut from_file, &mut to_file).await?;
+    to_file.set_permissions(from_meta.permissions()).await?;
     Ok(json!({}))
   };
 
