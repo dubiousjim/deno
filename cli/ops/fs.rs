@@ -913,8 +913,7 @@ fn op_truncate(
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && std::fs::metadata(path)
-            .map_or(false, |m| m.is_dir()) =>
+          && std::fs::metadata(path).map_or(false, |m| m.is_dir()) =>
       {
         // alternately, "The file exists. (os error 80)"
         return Err(OpError::already_exists(
