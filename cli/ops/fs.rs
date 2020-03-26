@@ -757,8 +757,7 @@ fn op_rename(
           // if newpath.is_dir(), prefer to fail with AlreadyExists
           if cfg!(windows)
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && std::fs::metadata(&newpath)
-              .map_or(false, |m| m.is_dir())
+            && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
             return Err(OpError::already_exists("Cannot create a file when that file already exists. (os error 183)".to_string()));
