@@ -1084,6 +1084,12 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function remove(path: string, options?: RemoveOptions): Promise<void>;
 
+  export interface RenameOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. */
+    createNew?: boolean;
+  }
+
   /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
    * exists and is not a directory, `renameSync()` replaces it. OS-specific
    * restrictions may apply when `oldpath` and `newpath` are in different
@@ -1091,8 +1097,12 @@ declare namespace Deno {
    *
    *       Deno.renameSync("old/path", "new/path");
    *
-   * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+   * Requires `allow-read` and `allow-write` permission. */
+  export function renameSync(
+    oldpath: string,
+    newpath: string,
+    options?: RenameOptions
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`. If `newpath` already exists and is
    * not a directory, `rename()` replaces it. OS-specific restrictions may apply
@@ -1100,8 +1110,12 @@ declare namespace Deno {
    *
    *       await Deno.rename("old/path", "new/path");
    *
-   * Requires `allow-read` and `allow-write`. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+   * Requires `allow-read` and `allow-write` permission. */
+  export function rename(
+    oldpath: string,
+    newpath: string,
+    options?: RenameOptions
+  ): Promise<void>;
 
   /** Reads and returns the entire contents of a file.
    *
@@ -1236,6 +1250,16 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function readdir(path: string): Promise<FileInfo[]>;
 
+  export interface CopyFileOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow creating a new file, if one doesn't already
+     * exist at the specified path (defaults to `true`). */
+    create?: boolean;
+  }
+
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
    * Fails if target path is a directory or is unwritable.
@@ -1244,7 +1268,11 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFileSync(fromPath: string, toPath: string): void;
+  export function copyFileSync(
+    fromPath: string,
+    toPath: string,
+    options?: CopyFileOptions
+  ): void;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -1254,7 +1282,11 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFile(fromPath: string, toPath: string): Promise<void>;
+  export function copyFile(
+    fromPath: string,
+    toPath: string,
+    options?: CopyFileOptions
+  ): Promise<void>;
 
   /** Returns the destination of the named symbolic link.
    *
@@ -1355,10 +1387,16 @@ declare namespace Deno {
     /** Defaults to `false`. If set to `true`, will append to a file instead of
      * overwriting previous contents. */
     append?: boolean;
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
-    /** Permissions always applied to file. */
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * Ignored on Windows. */
     mode?: number;
   }
 
@@ -1369,8 +1407,7 @@ declare namespace Deno {
    *       const data = encoder.encode("Hello world\n");
    *       Deno.writeFileSync("hello.txt", data);
    *
-   * Requires `allow-write` permission, and `allow-read` if create is `false`.
-   */
+   * Requires `allow-write` permission. */
   export function writeFileSync(
     path: string,
     data: Uint8Array,
@@ -1384,8 +1421,7 @@ declare namespace Deno {
    *       const data = encoder.encode("Hello world\n");
    *       await Deno.writeFile("hello.txt", data);
    *
-   * Requires `allow-write` permission, and `allow-read` if create is `false`.
-   */
+   * Requires `allow-write` permission. */
   export function writeFile(
     path: string,
     data: Uint8Array,
@@ -1544,20 +1580,42 @@ declare namespace Deno {
     constructor(state: PermissionState);
   }
 
+  export interface TruncateOptions {
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * create is ignored. */
+    createNew?: boolean;
+    /** Sets the option to allow creating a new file, if one doesn't already
+     * exist at the specified path (defaults to `true`). */
+    create?: boolean;
+    /** Permissions to use if creating the file (defaults to `0o666`, before
+     * the process's umask).
+     * Ignored on Windows. */
+    mode?: number;
+  }
+
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.
    *
    *       Deno.truncateSync("hello.txt", 10);
    *
    * Requires `allow-write` permission. */
-  export function truncateSync(name: string, len?: number): void;
+  export function truncateSync(
+    path: string,
+    len?: number,
+    options?: TruncateOptions
+  ): void;
 
   /** Truncates or extends the specified file, to reach the specified `len`.
    *
    *       await Deno.truncate("hello.txt", 10);
    *
    * Requires `allow-write` permission. */
-  export function truncate(name: string, len?: number): Promise<void>;
+  export function truncate(
+    path: string,
+    len?: number,
+    options?: TruncateOptions
+  ): Promise<void>;
 
   export interface AsyncHandler {
     (msg: Uint8Array): void;

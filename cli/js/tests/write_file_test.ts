@@ -18,8 +18,8 @@ unitTest(
 unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
-  const filename = "/baddir/test.txt";
-  // The following should fail because /baddir doesn't exist (hopefully).
+  const filename = Deno.makeTempDirSync() + "/baddir/test.txt";
+  // The following should fail because /baddir doesn't exist
   let caughtError = false;
   try {
     Deno.writeFileSync(filename, data);
@@ -52,10 +52,10 @@ unitTest(
       const enc = new TextEncoder();
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
-      Deno.writeFileSync(filename, data, { mode: 0o755 });
-      assertEquals(Deno.statSync(filename).mode, 0o755);
-      Deno.writeFileSync(filename, data, { mode: 0o666 });
-      assertEquals(Deno.statSync(filename).mode, 0o666);
+      Deno.writeFileSync(filename, data, { mode: 0o626 });
+      assertEquals(Deno.statSync(filename).mode, 0o626 & ~Deno.umask());
+      Deno.writeFileSync(filename, data, { mode: 0o737 });
+      assertEquals(Deno.statSync(filename).mode, 0o626 & ~Deno.umask());
     }
   }
 );
@@ -83,6 +83,36 @@ unitTest(
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function writeFileSyncCreateNew(): void {
+    const enc = new TextEncoder();
+    const data1 = enc.encode("Hello");
+    const data2 = enc.encode("world");
+    const dec = new TextDecoder("utf-8");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    // file newly created
+    Deno.writeFileSync(filename, data1, { createNew: true });
+    const dataRead1 = Deno.readFileSync(filename);
+    const actual1 = dec.decode(dataRead1);
+    assertEquals("Hello", actual1);
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      Deno.writeFileSync(filename, data2, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    // createNew: false and file exists
+    Deno.writeFileSync(filename, data2, { createNew: false });
+    const dataRead2 = Deno.readFileSync(filename);
+    const actual2 = dec.decode(dataRead2);
+    assertEquals("world", actual2);
   }
 );
 
@@ -130,8 +160,8 @@ unitTest(
   async function writeFileNotFound(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
-    const filename = "/baddir/test.txt";
-    // The following should fail because /baddir doesn't exist (hopefully).
+    const filename = Deno.makeTempDirSync() + "/baddir/test.txt";
+    // The following should fail because /baddir doesn't exist
     let caughtError = false;
     try {
       await Deno.writeFile(filename, data);
@@ -168,10 +198,10 @@ unitTest(
       const enc = new TextEncoder();
       const data = enc.encode("Hello");
       const filename = Deno.makeTempDirSync() + "/test.txt";
-      await Deno.writeFile(filename, data, { mode: 0o755 });
-      assertEquals(Deno.statSync(filename).mode, 0o755);
-      await Deno.writeFile(filename, data, { mode: 0o666 });
-      assertEquals(Deno.statSync(filename).mode, 0o666);
+      await Deno.writeFile(filename, data, { mode: 0o626 });
+      assertEquals(Deno.statSync(filename).mode, 0o626 & ~Deno.umask());
+      await Deno.writeFile(filename, data, { mode: 0o737 });
+      assertEquals(Deno.statSync(filename).mode, 0o626 & ~Deno.umask());
     }
   }
 );
@@ -204,6 +234,36 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
+  async function writeFileCreateNew(): Promise<void> {
+    const enc = new TextEncoder();
+    const data1 = enc.encode("Hello");
+    const data2 = enc.encode("world");
+    const dec = new TextDecoder("utf-8");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    // file newly created
+    await Deno.writeFile(filename, data1, { createNew: true });
+    const dataRead1 = Deno.readFileSync(filename);
+    const actual1 = dec.decode(dataRead1);
+    assertEquals("Hello", actual1);
+    // createNew: true but file exists
+    let caughtError = false;
+    try {
+      await Deno.writeFile(filename, data2, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    // createNew: false and file exists
+    await Deno.writeFile(filename, data2, { createNew: false });
+    const dataRead2 = Deno.readFileSync(filename);
+    const actual2 = dec.decode(dataRead2);
+    assertEquals("world", actual2);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   async function writeFileAppend(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -223,6 +283,208 @@ unitTest(
     await Deno.writeFile(filename, data);
     dataRead = Deno.readFileSync(filename);
     actual = dec.decode(dataRead);
+    assertEquals("Hello", actual);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function writeFileSyncDir(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    Deno.mkdirSync(dir);
+    let caughtError = false;
+    try {
+      Deno.writeFileSync(dir, data);
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(dir, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileDir(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    Deno.mkdirSync(dir);
+    let caughtError = false;
+    try {
+      await Deno.writeFile(dir, data);
+    } catch (e) {
+      caughtError = true;
+      if (Deno.build.os == "win") {
+        assert(e instanceof Deno.errors.PermissionDenied);
+      } else {
+        assert(e.message.includes("Is a directory"));
+      }
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(dir, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+  }
+);
+
+function assertLink(path: string, valid: boolean): void {
+  let info = Deno.lstatSync(path);
+  assert(info.isSymlink());
+  let caughtErr = false;
+  try {
+    info = Deno.statSync(path);
+  } catch (e) {
+    caughtErr = true;
+    assert(e instanceof Deno.errors.NotFound);
+  }
+  if (valid) {
+    assert(!caughtErr);
+  } else {
+    assert(caughtErr);
+    assertEquals(info, undefined);
+  }
+}
+
+unitTest(
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  function writeFileSyncLinks(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    const file = testDir + "/file";
+    Deno.mkdirSync(dir);
+    Deno.createSync(file).close();
+    const fileLink = testDir + "/fileLink";
+    const dirLink = testDir + "/dirLink";
+    const danglingLink = testDir + "/danglingLink";
+    const danglingTarget = testDir + "/nonexistent";
+    Deno.symlinkSync(file, fileLink);
+    Deno.symlinkSync(dir, dirLink);
+    Deno.symlinkSync(danglingTarget, danglingLink);
+    let caughtError = false;
+    try {
+      Deno.writeFileSync(fileLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(dirLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(danglingLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      Deno.writeFileSync(dirLink, data);
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    // should succeed
+    Deno.writeFileSync(fileLink, data);
+    assertLink(fileLink, true);
+    Deno.writeFileSync(danglingLink, data);
+    assertLink(danglingLink, true);
+    const dec = new TextDecoder("utf-8");
+    const dataRead = Deno.readFileSync(danglingTarget);
+    const actual = dec.decode(dataRead);
+    assertEquals("Hello", actual);
+  }
+);
+
+unitTest(
+  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  async function writeFileLinks(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const testDir = Deno.makeTempDirSync();
+    const dir = testDir + "/dir";
+    const file = testDir + "/file";
+    Deno.mkdirSync(dir);
+    Deno.createSync(file).close();
+    const fileLink = testDir + "/fileLink";
+    const dirLink = testDir + "/dirLink";
+    const danglingLink = testDir + "/danglingLink";
+    const danglingTarget = testDir + "/nonexistent";
+    Deno.symlinkSync(file, fileLink);
+    Deno.symlinkSync(dir, dirLink);
+    Deno.symlinkSync(danglingTarget, danglingLink);
+    let caughtError = false;
+    try {
+      await Deno.writeFile(fileLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(dirLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(danglingLink, data, { createNew: true });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.AlreadyExists);
+    }
+    assert(caughtError);
+    caughtError = false;
+    try {
+      await Deno.writeFile(dirLink, data);
+    } catch (e) {
+      caughtError = true;
+      assert(e.message.includes("Is a directory"));
+    }
+    assert(caughtError);
+    // should succeed
+    await Deno.writeFile(fileLink, data);
+    assertLink(fileLink, true);
+    await Deno.writeFile(danglingLink, data);
+    assertLink(danglingLink, true);
+    const dec = new TextDecoder("utf-8");
+    const dataRead = Deno.readFileSync(danglingTarget);
+    const actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
   }
 );
