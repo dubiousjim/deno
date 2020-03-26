@@ -76,7 +76,7 @@ winapi = "0.3.8"
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.14" # rustyline depends on 0.14, to avoid duplicates we do too.
+nix = "0.17"
 
 [dev-dependencies]
 os_pipe = "0.9.1"
