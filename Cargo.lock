@@ -436,7 +436,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "nix 0.17.0",
+ "nix",
  "notify",
  "os_pipe",
  "pty",
@@ -1232,19 +1232,6 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "nix"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c722bee1037d430d0f8e687bbdbf222f27cc6e4e68d5caf630857bb2b6dbdce"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
- "void",
-]
-
-[[package]]
-name = "nix"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50e4785f2c3b7589a0d0c1dd60285e1188adac4006e8abd6dd578e1567027363"
@@ -1895,15 +1882,14 @@ dependencies = [
 [[package]]
 name = "rustyline"
 version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de64be8eecbe428b6924f1d8430369a01719fbb182c26fa431ddbb0a95f5315d"
+source = "git+https://github.com/kkawakam/rustyline?rev=e7bf9012197717bbaad5f75ed91583886d906038#e7bf9012197717bbaad5f75ed91583886d906038"
 dependencies = [
  "cfg-if",
  "dirs",
  "libc",
  "log",
  "memchr",
- "nix 0.14.1",
+ "nix",
  "unicode-segmentation",
  "unicode-width",
  "utf8parse",
@@ -2523,9 +2509,9 @@ dependencies = [
 
 [[package]]
 name = "utf8parse"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8772a4ccbb4e89959023bc5b7cb8623a795caa7092d99f3aa9501b9484d4557d"
+checksum = "936e4b492acfd135421d8dca4b1aa80a7bfc26e702ef3af710e0752684df5372"
 
 [[package]]
 name = "utime"
