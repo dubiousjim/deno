@@ -1317,11 +1317,40 @@ fn op_utime(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
+
+  /*
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, atime, mtime);
     set_file_times(args.path, atime, mtime)?;
     Ok(json!({}))
   })
+  */
+
+  let blocking = move || {
+    debug!("op_utime {} {} {}", args.path, atime, mtime);
+    set_file_times(args.path, atime, mtime)?;
+    Ok(json!({}))
+  };
+  if is_sync {
+    Ok(JsonOp::Sync(blocking()?))
+  } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+
+  /*
+  let fut = async move {
+    ...
+    Ok(json!({}))
+  };
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+  */
 }
 
 fn op_cwd(
