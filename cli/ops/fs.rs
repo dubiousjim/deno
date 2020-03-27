@@ -591,7 +591,7 @@ fn op_chown(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
+    debug!("op_chown {} {} {}", path.display(), args.uid.unwrap_or(-1), args.gid.unwrap_or(-1));
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
@@ -1598,7 +1598,7 @@ fn op_fchown(
       use nix::unistd::{Gid, Uid};
       use super::nix_extra::fchown;
       let fd = my_check_open_for_writing(&file)?;
-      debug!("op_fchown {} {} {}", rid, args.uid, args.gid);
+      debug!("op_fchown {} {} {}", rid, args.uid.unwrap_or(-1), args.gid.unwrap_or(-1));
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
       fchown(fd, nix_uid, nix_gid)?;
