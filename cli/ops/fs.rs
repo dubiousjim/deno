@@ -22,7 +22,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(unix)]
 #[allow(unused_imports)]
-use super::nix_extra::{faccessat, fchown};
+use super::nix_extra::faccessat;
 
 #[cfg(unix)]
 fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
@@ -86,6 +86,8 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fchmod", s.stateful_json_op(op_fchmod));
   i.register_op("op_futime", s.stateful_json_op(op_futime));
   i.register_op("op_fstat", s.stateful_json_op(op_fstat));
+  i.register_op("op_fchown", s.stateful_json_op(op_fchown));
+  i.register_op("op_fchdir", s.stateful_json_op(op_fchdir));
 }
 
 fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
@@ -1547,7 +1549,7 @@ fn op_fstat(
     #[cfg(not(unix))]
     {
       let _ = file; // avoid unused warning
-      Ok(json!({}))
+      return Err(OpError::not_implemented());
     }
   };
 
@@ -1557,4 +1559,104 @@ fn op_fstat(
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
   }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FChownArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  uid: u32,
+  gid: u32,
+}
+
+fn op_fchown(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::not_implemented());
+  }
+  let args: FChownArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_file = match resource_holder.resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let is_sync = args.promise_id.is_none();
+  let fut = async move {
+    #[cfg(unix)]
+    {
+      use nix::unistd::{Gid, Uid};
+      use super::nix_extra::fchown;
+      let fd = my_check_open_for_writing(&file)?;
+      debug!("op_fchown {} {} {}", rid, args.uid, args.gid);
+      let nix_uid = Uid::from_raw(args.uid);
+      let nix_gid = Gid::from_raw(args.gid);
+      fchown(fd, Option::Some(nix_uid), Option::Some(nix_gid))?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = args.uid; // avoid unused warning
+      let _ = args.gid;
+      let _ = file;
+    }
+    Ok(json!({}))
+  };
+
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+struct FChdirArgs {
+  rid: i32,
+}
+
+fn op_fchdir(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  if cfg!(not(unix)) {
+    return Err(OpError::not_implemented());
+  }
+  let args: FChdirArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let state = state.borrow();
+  let resource_holder = state
+    .resource_table
+    .get::<StreamResourceHolder>(rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+
+  let tokio_dir = match resource_holder.resource {
+    StreamResource::FsFile(ref file, _) => file,
+    _ => return Err(OpError::bad_resource_id()),
+  };
+  let dir = futures::executor::block_on(tokio_dir.try_clone())?;
+  #[cfg(unix)]
+  {
+    let fd = dir.as_raw_fd();
+    nix::unistd::fchdir(fd)?;
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = dir;
+  }
+  Ok(JsonOp::Sync(json!({})))
 }
