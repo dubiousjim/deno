@@ -21,6 +21,10 @@ use rand::{thread_rng, Rng};
 use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(unix)]
+#[allow(unused_imports)]
+use super::nix_extra::{faccessat, fchown};
+
+#[cfg(unix)]
 fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   use nix::fcntl::{fcntl, FcntlArg, OFlag};
   let fd = file.as_raw_fd();
