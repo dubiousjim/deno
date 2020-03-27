@@ -5,6 +5,10 @@ export function cwd(): string {
   return sendSync("op_cwd");
 }
 
-export function chdir(directory: string): void {
-  sendSync("op_chdir", { directory });
+export function chdir(path: string | number): void {
+  if (typeof path == "string") {
+    sendSync("op_chdir", { path });
+  } else {
+    sendSync("op_fchdir", { rid: path });
+  }
 }
