@@ -812,7 +812,7 @@ fn get_stat_json(
 struct StatArgs {
   promise_id: Option<u64>,
   path: String,
-  lstat: bool,
+  nofollow: bool,
 }
 
 fn op_stat(
@@ -822,14 +822,14 @@ fn op_stat(
 ) -> Result<JsonOp, OpError> {
   let args: StatArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  let lstat = args.lstat;
+  let nofollow = args.nofollow;
 
   state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_stat {} {}", path.display(), lstat);
-    let metadata = if lstat {
+    debug!("op_stat {} {}", path.display(), nofollow);
+    let metadata = if nofollow {
       tokio::fs::symlink_metadata(&path).await?
     } else {
       tokio::fs::metadata(&path).await?

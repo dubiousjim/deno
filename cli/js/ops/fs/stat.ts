@@ -27,7 +27,7 @@ export interface StatResponse {
 export async function lstat(path: string): Promise<FileInfo> {
   const res = (await sendAsync("op_stat", {
     path,
-    lstat: true,
+    nofollow: true,
   })) as StatResponse;
   return new FileInfoImpl(res);
 }
@@ -35,7 +35,7 @@ export async function lstat(path: string): Promise<FileInfo> {
 export function lstatSync(path: string): FileInfo {
   const res = sendSync("op_stat", {
     path,
-    lstat: true,
+    nofollow: true,
   }) as StatResponse;
   return new FileInfoImpl(res);
 }
@@ -44,7 +44,7 @@ export async function stat(path: string | number): Promise<FileInfo> {
   if (typeof path == "string") {
     const res = (await sendAsync("op_stat", {
       path,
-      lstat: false,
+      nofollow: false,
     })) as StatResponse;
     return new FileInfoImpl(res);
   } else {
@@ -59,7 +59,7 @@ export function statSync(path: string | number): FileInfo {
   if (typeof path == "string") {
     const res = sendSync("op_stat", {
       path,
-      lstat: false,
+      nofollow: false,
     }) as StatResponse;
     return new FileInfoImpl(res);
   } else {
