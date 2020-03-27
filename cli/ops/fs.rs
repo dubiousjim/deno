@@ -434,7 +434,7 @@ fn op_umask(
 
 #[derive(Deserialize)]
 struct ChdirArgs {
-  directory: String,
+  path: String,
 }
 
 fn op_chdir(
@@ -443,7 +443,7 @@ fn op_chdir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  set_current_dir(&args.directory)?;
+  set_current_dir(&args.path)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -575,8 +575,8 @@ fn op_chmod(
 struct ChownArgs {
   promise_id: Option<u64>,
   path: String,
-  uid: u32,
-  gid: u32,
+  uid: Option<u32>,
+  gid: Option<u32>,
 }
 
 fn op_chown(
@@ -595,9 +595,9 @@ fn op_chown(
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = Uid::from_raw(args.uid);
-      let nix_gid = Gid::from_raw(args.gid);
-      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
+      chown(&path, nix_uid, nix_gid)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
@@ -1564,8 +1564,8 @@ fn op_fstat(
 struct FChownArgs {
   promise_id: Option<u64>,
   rid: i32,
-  uid: u32,
-  gid: u32,
+  uid: Option<u32>,
+  gid: Option<u32>,
 }
 
 fn op_fchown(
@@ -1599,9 +1599,9 @@ fn op_fchown(
       use super::nix_extra::fchown;
       let fd = my_check_open_for_writing(&file)?;
       debug!("op_fchown {} {} {}", rid, args.uid, args.gid);
-      let nix_uid = Uid::from_raw(args.uid);
-      let nix_gid = Gid::from_raw(args.gid);
-      fchown(fd, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
+      fchown(fd, nix_uid, nix_gid)?;
     }
     #[cfg(not(unix))]
     {

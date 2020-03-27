@@ -384,7 +384,7 @@ declare namespace Deno {
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
    * rights
    */
-  export function chdir(directory: string): void;
+  export function chdir(path: string | number): void;
 
   /**
    * **UNSTABLE**: New API. Maybe needs permissions.
@@ -696,6 +696,9 @@ declare namespace Deno {
     truncateSync(len?: number): void;
     chmod(mode: number): Promise<void>;
     chmodSync(mode: number): void;
+    chown(uid?: number, gid?: number): Promise<void>;
+    chownSync(uid?: number, gid?: number): void;
+    chdir(): void; // FIXME
     utime(atime: number | Date, mtime: number | Date): Promise<void>;
     utimeSync(atime: number | Date, mtime: number | Date): void;
     stat(): Promise<FileInfo>;
@@ -1032,7 +1035,7 @@ declare namespace Deno {
    * @param uid user id (UID) of the new owner
    * @param gid group id (GID) of the new owner
    */
-  export function chownSync(path: string, uid: number, gid: number): void;
+  export function chownSync(path: string | number, uid?: number, gid?: number): void;
 
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1047,7 +1050,7 @@ declare namespace Deno {
    * @param uid user id (UID) of the new owner
    * @param gid group id (GID) of the new owner
    */
-  export function chown(path: string, uid: number, gid: number): Promise<void>;
+  export function chown(path: string | number, uid?: number, gid?: number): Promise<void>;
 
   /** **UNSTABLE**: needs investigation into high precision time.
    *

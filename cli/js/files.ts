@@ -22,6 +22,8 @@ import {
 } from "./ops/fs/open.ts";
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 import { chmod, chmodSync } from "./ops/fs/chmod.ts";
+import { chown, chownSync } from "./ops/fs/chown.ts";
+import { chdir } from "./ops/fs/dir.ts"; /// FIXME
 import { stat, statSync } from "./ops/fs/stat.ts";
 import { FileInfo } from "./file_info.ts";
 import { sync, datasync } from "./ops/fs/sync.ts";
@@ -139,6 +141,18 @@ export class File
 
   chmodSync(mode: number): void {
     return chmodSync(this.rid, mode);
+  }
+
+  chown(uid?: number, gid?: number): Promise<void> {
+    return chown(this.rid, uid, gid);
+  }
+
+  chownSync(uid?: number, gid?: number): void {
+    return chownSync(this.rid, uid, gid);
+  }
+
+  chdir(): void { // FIXME
+    return chdir(this.rid);
   }
 
   utime(atime: number | Date, mtime: number | Date): Promise<void> {
