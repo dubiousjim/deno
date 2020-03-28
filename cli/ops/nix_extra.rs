@@ -66,23 +66,21 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 
 //////////////////////
 
-/// From https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
+/// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
 #[cfg(target_os = "linux")]
 macro_rules! syscall {
-    (fn $name:ident($($arg_name:ident: $t:ty),*) -> $ret:ty) => (
+    (fn $name:ident($sysname:ident, $($arg_name:ident: $t:ty),*) -> $ret:ty) => (
         unsafe fn $name($($arg_name:$t),*) -> $ret {
             use libc::*;
             syscall(
                 // concat_idents only accepts idents (not paths).
                 // concat_idents!(SYS_, $name),
-                concat!(SYS_, $name),
+                $sysname,
                 $($arg_name as c_long),*
             ) as $ret
         }
     )
 }
-
-
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
@@ -102,11 +100,7 @@ macro_rules! impl_is_minus_one {
     })*)
 }
 
-/*
-impl_is_minus_one! { i8 i16 i32 i64 isize }
-*/
-
-impl_is_minus_one! { i32 }
+impl_is_minus_one! { i32 } // i8 i16 i64 isize
 
 pub fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
     if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
@@ -146,6 +140,7 @@ unsafe fn try_statx(
   static STATX_STATE: AtomicU8 = AtomicU8::new(0);
   syscall! {
       fn statx(
+          SYS_statx,
           fd: c_int,
           pathname: *const libc::c_char,
           flags: c_int,
