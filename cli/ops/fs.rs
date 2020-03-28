@@ -1291,17 +1291,17 @@ fn op_read_link(
     {
       // use nix::fcntl::{readlink, readlinkat};
       use nix::fcntl::readlinkat;
-      let targetpath_str = match atdir {
+      let targetpath = match atdir {
         Some(dir) => {
           let fd = dir.as_raw_fd();
           readlinkat(fd, &path)?.into_string()?
         }
         None => {
-          let targetpath = std::fs::read_link(&path)?;
-          targetpath.to_str().unwrap()
+          std::fs::read_link(&path)?
           // readlink(&path)
         }
       };
+      let targetpath_str = targetpath.to_str().unwrap();
     }
     #[cfg(not(unix))]
     {
