@@ -235,13 +235,24 @@ cfg_has_statx! {{
     }))
   }
 
+  impl FileAttr {
+    fn from_stat64(stat: stat64) -> Self {
+      Self { stat, statx_extra_fields: None }
+    }
+  }
+
 } else {
   #[derive(Clone)]
   pub struct FileAttr {
     stat: stat64,
   }
-}}
 
+  impl FileAttr {
+      fn from_stat64(stat: stat64) -> Self {
+          Self { stat }
+      }
+  }
+}}
 
 /*
     pub fn created(&self) -> io::Result<SystemTime> {
@@ -332,9 +343,13 @@ pub fn lstat(p: &Path) -> io::Result<FileAttr> {
             return ret;
         }
 
+    let mut stat: stat64 = unsafe { mem::zeroed() };
+    cvt(unsafe { lstat64(p.as_ptr(), &mut stat) })?;
+    Ok(FileAttr::from_stat64(stat))
+}
 */
 
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
+// #[cfg(all(target_os = "linux", target_env = "gnu"))]
 #[allow(dead_code)]
 // pub fn my_fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<FileAttr> {
 pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<FileAttr> {
@@ -360,6 +375,11 @@ pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io:
   cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
   Ok(FileAttr::from_stat64(stat))
 }
+
+
+
+
+
 
 #[cfg(test)]
 mod tests {
