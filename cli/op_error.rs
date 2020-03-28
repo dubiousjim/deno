@@ -318,6 +318,15 @@ impl From<&serde_json::error::Error> for OpError {
   }
 }
 
+impl From<std::ffi::OsString> for OpError {
+  fn from(_error: std::ffi::OsString) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: "invalid Unicode".to_string(),
+    }
+  }
+}
+
 #[cfg(unix)]
 impl From<nix::Error> for OpError {
   fn from(error: nix::Error) -> Self {
@@ -326,8 +335,12 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
+      nix::Error::Sys(EEXIST) => ErrorKind::AlreadyExists,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
-      nix::Error::Sys(_) => unreachable!(),
+      nix::Error::Sys(code) => {
+        dbg!("unexpected nix::Error::Sys", code);
+        unreachable!()
+      }
       nix::Error::InvalidPath => ErrorKind::TypeError,
       nix::Error::InvalidUtf8 => ErrorKind::InvalidData,
       nix::Error::UnsupportedOperation => unreachable!(),

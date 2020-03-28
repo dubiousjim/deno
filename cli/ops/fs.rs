@@ -24,40 +24,6 @@ use std::os::unix::io::{AsRawFd, RawFd};
 #[allow(unused_imports)]
 use super::nix_extra::faccessat;
 
-#[cfg(unix)]
-fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
-  use nix::fcntl::{fcntl, FcntlArg, OFlag};
-  let fd = file.as_raw_fd();
-  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-  let flags = OFlag::from_bits_truncate(flags);
-  let mode = OFlag::O_ACCMODE & flags;
-  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
-    Ok(fd)
-  } else {
-    let e = OpError::permission_denied(
-      "run again with the --allow-write flag".to_string(),
-    );
-    Err(e)
-  }
-}
-
-#[cfg(unix)]
-fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
-  use nix::fcntl::{fcntl, FcntlArg, OFlag};
-  let fd = file.as_raw_fd();
-  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-  let flags = OFlag::from_bits_truncate(flags);
-  let mode = OFlag::O_ACCMODE & flags;
-  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
-    Ok(fd)
-  } else {
-    let e = OpError::permission_denied(
-      "run again with the --allow-read flag".to_string(),
-    );
-    Err(e)
-  }
-}
-
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -90,7 +56,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fchdir", s.stateful_json_op(op_fchdir));
 }
 
-fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
+fn tokio_open_options(
+  mode: Option<u32>,
+  nofollow: bool,
+) -> tokio::fs::OpenOptions {
   if let Some(mode) = mode {
     #[allow(unused_mut)]
     let mut std_options = std::fs::OpenOptions::new();
@@ -100,9 +69,15 @@ fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
     {
       use std::os::unix::fs::OpenOptionsExt;
       std_options.mode(mode & 0o777);
+      if nofollow {
+        std_options.custom_flags(libc::O_NOFOLLOW);
+      }
     }
     #[cfg(not(unix))]
-    let _ = mode; // avoid unused warning
+    {
+      let _ = mode; // avoid unused warning
+      let _ = nofollow;
+    }
     tokio::fs::OpenOptions::from(std_options)
   } else {
     tokio::fs::OpenOptions::new()
@@ -117,6 +92,9 @@ struct OpenArgs {
   options: Option<OpenOptions>,
   open_mode: Option<String>,
   mode: Option<u32>,
+  nofollow: bool,
+  #[allow(unused)]
+  atrid: Option<i32>, // FIXME(jp5) open
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -138,9 +116,10 @@ fn op_open(
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   let state_ = state.clone();
 
-  let mut open_options = tokio_open_options(args.mode);
+  let mut open_options = tokio_open_options(args.mode, nofollow);
   let mut create_new = false;
 
   if let Some(options) = args.options {
@@ -361,6 +340,8 @@ fn op_sync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("sync {}", rid);
+  // FIXME(jp1)
+  // futures::executor::block_on(async move { file.sync_all().await })?;
   futures::executor::block_on(file.sync_all())?;
   Ok(JsonOp::Sync(json!({})))
 }
@@ -386,6 +367,8 @@ fn op_datasync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("datasync {}", rid);
+  // FIXME(jp1)
+  // futures::executor::block_on(async move { file.sync_data().await })?;
   futures::executor::block_on(file.sync_data())?;
   Ok(JsonOp::Sync(json!({})))
 }
@@ -500,7 +483,7 @@ fn op_mkdir(
             // couldn't apply mode, so remove_dir then propagate error
             // if dir already existed (and so might not be empty)
             // we'll already have exited (if args.recursive) or failed
-            tokio::fs::remove_dir(path).await?;
+            tokio::fs::remove_dir(&path).await?;
             return Err(OpError::from(e));
           }
         }
@@ -523,6 +506,8 @@ struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
   mode: u32,
+  nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_chmod(
@@ -532,38 +517,76 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    debug!("op_chmod {} {:o}", path.display(), mode);
+  let blocking = move || {
+    debug!("op_chmod {} {:o} {}", path.display(), mode, nofollow);
     #[cfg(unix)]
     {
-      use std::os::unix::fs::PermissionsExt;
       /*
-      let metadata = tokio::fs::metadata(&path).await?;
-      let mut permissions = metadata.permissions();
-      permissions.set_mode(mode);
+       // futures::executor (async move) version
+       use std::os::unix::fs::PermissionsExt;
+       /*
+       let metadata = tokio::fs::metadata(&path).await?;
+       let mut permissions = metadata.permissions();
+       permissions.set_mode(mode);
+       */
+       let permissions = PermissionsExt::from_mode(mode);
+       tokio::fs::set_permissions(&path, permissions).await?;
       */
-      let permissions = PermissionsExt::from_mode(mode);
-      tokio::fs::set_permissions(&path, permissions).await?;
+      use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
+      #[cfg(target_os = "macos")]
+      let mode: u16 = mode.try_into()?;
+      let nix_mode = Mode::from_bits_truncate(mode);
+      let flag = if nofollow {
+        FchmodatFlags::NoFollowSymlink
+      } else {
+        FchmodatFlags::FollowSymlink
+      };
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      fchmodat(fd, &path, nix_mode, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
+      let _ = atdir; // avoid unused warning
+
       // Still check file/dir exists on Windows
-      let _metadata = tokio::fs::metadata(&path).await?;
+      let _metadata = std::fs::metadata(&path)?;
       Err(OpError::not_implemented())
     }
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -575,6 +598,8 @@ struct ChownArgs {
   path: String,
   uid: u32,
   gid: u32,
+  nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_chown(
@@ -584,28 +609,64 @@ fn op_chown(
 ) -> Result<JsonOp, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
+  let blocking = move || {
+    debug!("op_chown {} {} {} {}", path.display(), args.uid, args.gid, nofollow);
     #[cfg(unix)]
     {
-      use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = Uid::from_raw(args.uid);
-      let nix_gid = Gid::from_raw(args.gid);
-      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      use nix::unistd::{fchownat, FchownatFlags, Gid, Uid};
+      let nix_uid = Some(Uid::from_raw(args.uid));
+      let nix_gid = Some(Gid::from_raw(args.gid));
+      let flag = if nofollow {
+        FchownatFlags::NoFollowSymlink
+      } else {
+        FchownatFlags::FollowSymlink
+      };
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      fchownat(fd, &path, nix_uid, nix_gid, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      // Still check file/dir exists on Windows
+      let _ = atdir; // avoid unused warning
+                     // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
       Err(OpError::not_implemented())
     }
-  })
+  };
+
+  if is_sync {
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
+  } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -813,6 +874,7 @@ struct StatArgs {
   promise_id: Option<u64>,
   path: String,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_stat(
@@ -826,21 +888,94 @@ fn op_stat(
 
   state.check_read(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_stat {} {}", path.display(), nofollow);
-    let metadata = if nofollow {
-      tokio::fs::symlink_metadata(&path).await?
-    } else {
-      tokio::fs::metadata(&path).await?
-    };
-    get_stat_json(metadata, None)
+    #[cfg(unix)]
+    {
+      use nix::fcntl::AtFlags;
+      use nix::sys::stat::{fstatat, lstat, stat, FileStat, SFlag};
+      let filestat: FileStat = match atdir {
+        Some(dir) => {
+          let flag = if nofollow {
+            AtFlags::AT_SYMLINK_NOFOLLOW
+          } else {
+            AtFlags::AT_SYMLINK_FOLLOW
+          };
+          fstatat(dir.as_raw_fd(), &path, flag)?
+        }
+        None if nofollow => lstat(&path)?,
+        None => stat(&path)?,
+      };
+      let sflag = SFlag::from_bits_truncate(filestat.st_mode);
+      // see https://unix.stackexchange.com/questions/91197
+      // not available on Linux, and their
+      // libc::statx(dirfd, &path, flags, mask, &statxbuf_with_stx_btime)
+      // doesn't apply to fd
+      #[cfg(target_os = "linux")]
+      let birthtime: i64 = 0;
+      // let birthtime: i64 = filestat.st_birthtime;
+      #[cfg(not(target_os = "linux"))]
+      let birthtime: i64 = filestat.st_birthtime;
+      let json_val = json!({
+        "isFile": sflag.contains(SFlag::S_IFREG),
+        "isDir": sflag.contains(SFlag::S_IFLNK),
+        "isSymlink": sflag.contains(SFlag::S_IFDIR),
+        "size": filestat.st_size,
+        // all times are i64
+        "modified": filestat.st_mtime, // changed when fdatasync
+        "accessed": filestat.st_atime,
+        "created": birthtime,
+        "ctime": filestat.st_ctime, // changed when fdatasync or chown/chmod/rename/moved
+        "dev": filestat.st_dev, // u64
+        "ino": filestat.st_ino, // u64
+        "mode": filestat.st_mode, // usually u32, may be u16 on Mac
+        "nlink": filestat.st_nlink, // u64
+        "uid": filestat.st_uid, // u32
+        "gid": filestat.st_gid, // u32
+        "rdev": filestat.st_rdev, // u64
+        "blksize": filestat.st_blksize, // i64
+        "blocks": filestat.st_blocks, // i64
+      });
+      Ok(json_val)
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let metadata = if nofollow {
+        std::fs::symlink_metadata(&path)?
+      } else {
+        std::fs::metadata(&path)?
+      };
+      get_stat_json(metadata, None)
+    }
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -905,7 +1040,7 @@ fn op_read_dir(
   let fut = async move {
     debug!("op_read_dir {}", path.display());
     let mut entries = Vec::new();
-    let mut stream = tokio::fs::read_dir(path).await?;
+    let mut stream = tokio::fs::read_dir(&path).await?;
     while let Some(entry) = stream.next_entry().await? {
       let metadata = entry.metadata().await?;
       // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -932,6 +1067,7 @@ struct RenameArgs {
   oldpath: String,
   newpath: String,
   create_new: bool,
+  atrid: Option<i32>,
 }
 
 fn op_rename(
@@ -952,26 +1088,45 @@ fn op_rename(
     state.check_read(&newpath)?;
   }
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+  // TODO(jp5) rename (complex)
+  let _ = atdir; // avoid unused warning
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if create_new {
       // like `mv -Tn`, we don't follow symlinks
-      let old_meta = tokio::fs::symlink_metadata(&oldpath).await?;
+      let old_meta = std::fs::symlink_metadata(&oldpath)?;
       if cfg!(unix) && old_meta.is_dir() {
         // on Unix, mv from dir to file always fails, but to emptydir is ok
-        tokio::fs::create_dir(&newpath).await?;
+        std::fs::create_dir(&newpath)?;
       } else {
         // on Windows, mv from dir to dir always fails, but to file is ok
-        let mut open_options = tokio::fs::OpenOptions::new();
+        let mut open_options = std::fs::OpenOptions::new();
         open_options.write(true).create_new(true);
-        if let Err(e) = open_options.open(&newpath).await {
+        if let Err(e) = open_options.open(&newpath) {
           // if newpath.is_dir(), prefer to fail with AlreadyExists
           if cfg!(windows)
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && tokio::fs::metadata(&newpath)
-              .await
-              .map_or(false, |m| m.is_dir())
+            && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
             return Err(OpError::already_exists("Cannot create a file when that file already exists. (os error 183)".to_string()));
@@ -980,14 +1135,16 @@ fn op_rename(
         }
       }
     }
-    tokio::fs::rename(&oldpath, &newpath).await?;
+    std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -998,6 +1155,9 @@ struct LinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  nofollow: bool,
+  oldatrid: Option<i32>,
+  newatrid: Option<i32>,
 }
 
 fn op_link(
@@ -1008,21 +1168,87 @@ fn op_link(
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let nofollow = args.nofollow;
 
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
 
+  let oldatdir = match args.oldatrid {
+    Some(oldatrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(oldatrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+  let newatdir = match args.newatrid {
+    Some(newatrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(newatrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    debug!("op_link {} {}", oldpath.display(), newpath.display());
-    tokio::fs::hard_link(&oldpath, &newpath).await?;
+  let blocking = move || {
+    debug!(
+      "op_link {} {} {}",
+      oldpath.display(),
+      newpath.display(),
+      nofollow
+    );
+    /*
+       // futures::executor (async move) version
+       tokio::fs::hard_link(&oldpath, &newpath).await?;
+    */
+    #[cfg(unix)]
+    {
+      use nix::unistd::{linkat, LinkatFlags};
+      // the names of these flags are inverted relative to others
+      let flag = if nofollow {
+        LinkatFlags::NoSymlinkFollow
+      } else {
+        LinkatFlags::SymlinkFollow
+      };
+      let oldfd = oldatdir.map(|dir| dir.as_raw_fd());
+      let newfd = newatdir.map(|dir| dir.as_raw_fd());
+      linkat(oldfd, &oldpath, newfd, &newpath, flag)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = oldatdir; // avoid unused warning
+      let _ = newatdir;
+      std::fs::hard_link(&oldpath, &newpath)?;
+    }
     Ok(json!({}))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1033,6 +1259,7 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  atrid: Option<i32>,
 }
 
 fn op_symlink(
@@ -1046,29 +1273,57 @@ fn op_symlink(
 
   state.check_write(&newpath)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_symlink {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
     {
-      use tokio::fs::os::unix::symlink;
-      symlink(&oldpath, &newpath).await?;
+      /*
+      use std::fs::os::unix::symlink;
+      symlink(&oldpath, &newpath)?;
+      */
+      use nix::unistd::symlinkat;
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      symlinkat(&oldpath, fd, &newpath)?;
       Ok(json!({}))
     }
     // TODO Implement symlink, use type for Windows
     #[cfg(not(unix))]
     {
+      let _ = atdir; // avoid unused warning
+
       // Unlike with chmod/chown, here we don't
       // require `oldpath` to exist on Windows
-      let _ = oldpath; // avoid unused warning
+      let _ = oldpath;
       Err(OpError::not_implemented())
     }
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1078,6 +1333,7 @@ fn op_symlink(
 struct ReadLinkArgs {
   promise_id: Option<u64>,
   path: String,
+  atrid: Option<i32>,
 }
 
 fn op_read_link(
@@ -1090,19 +1346,58 @@ fn op_read_link(
 
   state.check_read(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    debug!("op_read_link {}", path.display());
-    let path = tokio::fs::read_link(&path).await?;
-    let path_str = path.to_str().unwrap();
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
 
-    Ok(json!(path_str))
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
+  let is_sync = args.promise_id.is_none();
+  let blocking = move || {
+    debug!("op_read_link {}", path.display());
+    let ostarget: std::ffi::OsString;
+    #[cfg(unix)]
+    {
+      use nix::fcntl::{readlink, readlinkat};
+      ostarget = match atdir {
+        Some(dir) => {
+          let fd = dir.as_raw_fd();
+          readlinkat(fd, &path)?
+        }
+        None => {
+          // std::fs::read_link(&path)?.into_os_string()
+          readlink(&path)?
+        }
+      };
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      ostarget = std::fs::read_link(&path)?.into_os_string();
+    }
+    let targetstr = ostarget.into_string()?;
+    Ok(json!(targetstr))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1116,6 +1411,9 @@ struct TruncateArgs {
   mode: Option<u32>,
   create: bool,
   create_new: bool,
+  nofollow: bool,
+  #[allow(unused)]
+  atrid: Option<i32>, // FIXME(jp5) truncate
 }
 
 fn op_truncate(
@@ -1125,6 +1423,7 @@ fn op_truncate(
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   // require len to be 63 bit unsigned
   let len: u64 = args.len.try_into()?;
   let create = args.create;
@@ -1144,8 +1443,8 @@ fn op_truncate(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = tokio_open_options(args.mode);
+    debug!("op_truncate {} {} {}", path.display(), len, nofollow);
+    let mut open_options = tokio_open_options(args.mode, nofollow);
     open_options
       .create(create)
       .create_new(create_new)
@@ -1247,6 +1546,7 @@ fn op_make_temp_dir(
 
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
+  // FIXME(jp2)
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1278,6 +1578,7 @@ fn op_make_temp_file(
 
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
+  // FIXME(jp2)
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1303,6 +1604,8 @@ struct UtimeArgs {
   path: String,
   atime: i64,
   mtime: i64,
+  nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_utime(
@@ -1312,47 +1615,72 @@ fn op_utime(
 ) -> Result<JsonOp, OpError> {
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   // require times to be 63 bit unsigned
   let atime: u64 = args.atime.try_into()?;
   let mtime: u64 = args.mtime.try_into()?;
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  // FIXME
-
-  /*
-  blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.path, atime, mtime);
-    utime::set_file_times(args.path, atime, mtime)?;
-    Ok(json!({}))
-  })
-  */
-
   let blocking = move || {
-    debug!("op_utime {} {} {}", args.path, atime, mtime);
-    set_file_times(args.path, atime, mtime)?;
+    debug!(
+      "op_utime {} {} {} {}",
+      path.display(),
+      atime,
+      mtime,
+      nofollow
+    );
+    #[cfg(unix)]
+    {
+      use nix::sys::stat::{utimensat, UtimensatFlags};
+      use nix::sys::time::{TimeSpec, TimeValLike};
+      let atime = TimeSpec::seconds(atime as i64);
+      let mtime = TimeSpec::seconds(mtime as i64);
+      let flag = if nofollow {
+        UtimensatFlags::NoFollowSymlink
+      } else {
+        UtimensatFlags::FollowSymlink
+      };
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      utimensat(fd, &path, &atime, &mtime, flag)?;
+    }
+    #[cfg(not(unix))]
+    {
+      use utime::set_file_times;
+      let _ = atdir; // avoid unused warning
+      set_file_times(&path, atime, mtime)?;
+    }
     Ok(json!({}))
   };
-  if is_sync {
-    Ok(JsonOp::Sync(blocking()?))
-  } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
 
-  /*
-  let fut = async move {
-    ...
-    Ok(json!({}))
-  };
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
-  */
 }
 
 fn op_cwd(
@@ -1363,6 +1691,40 @@ fn op_cwd(
   let path = current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
+}
+
+#[cfg(unix)]
+fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-write flag".to_string(),
+    );
+    Err(e)
+  }
+}
+
+#[cfg(unix)]
+fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-read flag".to_string(),
+    );
+    Err(e)
+  }
 }
 
 #[derive(Deserialize)]
@@ -1400,7 +1762,7 @@ fn op_ftruncate(
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
     #[cfg(unix)]
-    my_check_open_for_writing(&file)?;
+    check_open_for_writing(&file)?;
     debug!("op_ftruncate {} {}", rid, len);
     file.set_len(len).await?;
     Ok(json!({}))
@@ -1452,7 +1814,7 @@ fn op_fchmod(
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
-      my_check_open_for_writing(&file)?;
+      check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
       /*
       let metadata = file.metadata().await?;
@@ -1513,13 +1875,14 @@ fn op_futime(
   };
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let blocking = move || {
     #[cfg(unix)]
     {
       use nix::sys::stat::futimens;
       use nix::sys::time::{TimeSpec, TimeValLike};
-      let fd = my_check_open_for_writing(&file)?;
+      let fd = check_open_for_writing(&file)?;
       debug!("op_futime {} {} {}", rid, atime, mtime);
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
@@ -1532,7 +1895,16 @@ fn op_futime(
       let _ = mtime;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
+  } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -1570,7 +1942,7 @@ fn op_fstat(
   let fut = async move {
     #[cfg(unix)]
     {
-      my_check_open_for_reading(&file)?;
+      check_open_for_reading(&file)?;
       debug!("op_fstat {}", rid);
       let metadata = file.metadata().await?;
       get_stat_json(metadata, None)
@@ -1622,14 +1994,20 @@ fn op_fchown(
   };
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     #[cfg(unix)]
     {
-      use nix::unistd::{Gid, Uid};
       use super::nix_extra::fchown;
-      let fd = my_check_open_for_writing(&file)?;
-      debug!("op_fchown {} {} {}", rid, args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
+      use nix::unistd::{Gid, Uid};
+      let fd = check_open_for_writing(&file)?;
+      debug!(
+        "op_fchown {} {} {}",
+        rid,
+        args.uid.unwrap_or(0xffff_ffff),
+        args.gid.unwrap_or(0xffff_ffff)
+      );
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
       fchown(fd, nix_uid, nix_gid)?;
@@ -1644,9 +2022,11 @@ fn op_fchown(
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1689,3 +2069,37 @@ fn op_fchdir(
   }
   Ok(JsonOp::Sync(json!({})))
 }
+
+/*
+blocking_json(is_sync, move || {
+  ...
+  Ok(json!({}))
+})
+*/
+
+/*
+let blocking = move || {
+  ...
+  Ok(json!({}))
+};
+if is_sync {
+  let res = blocking()?;
+  Ok(JsonOp::Sync(res))
+} else {
+  let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+  Ok(JsonOp::Async(fut.boxed_local()))
+}
+*/
+
+/*
+let fut = async move {
+  ...
+  Ok(json!({}))
+};
+if is_sync {
+  let buf = futures::executor::block_on(fut)?;
+  Ok(JsonOp::Sync(buf))
+} else {
+  Ok(JsonOp::Async(fut.boxed_local()))
+}
+*/
