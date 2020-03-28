@@ -252,7 +252,7 @@ fn op_open(
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && tokio::fs::metadata(path).await.is_ok() =>
+          && tokio::fs::metadata(&path).await.is_ok() =>
       {
         // alternately, "The file exists. (os error 80)"
         return Err(OpError::already_exists(
@@ -514,7 +514,7 @@ fn op_mkdir(
             // couldn't apply mode, so remove_dir then propagate error
             // if dir already existed (and so might not be empty)
             // we'll already have exited (if args.recursive) or failed
-            tokio::fs::remove_dir(path).await?;
+            tokio::fs::remove_dir(&path).await?;
             return Err(OpError::from(e));
           }
         }
@@ -579,7 +579,6 @@ fn op_chmod(
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
-      let _ = nofollow; // avoid unused warning
       // Still check file/dir exists on Windows
       let _metadata = tokio::fs::metadata(&path).await?;
       return Err(OpError::not_implemented());
@@ -632,7 +631,6 @@ fn op_chown(
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      let _ = nofollow; // avoid unused warning
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
@@ -942,7 +940,7 @@ fn op_read_dir(
   let fut = async move {
     debug!("op_read_dir {}", path.display());
     let mut entries = Vec::new();
-    let mut stream = tokio::fs::read_dir(path).await?;
+    let mut stream = tokio::fs::read_dir(&path).await?;
     while let Some(entry) = stream.next_entry().await? {
       let metadata = entry.metadata().await?;
       // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -1062,7 +1060,8 @@ fn op_link(
     #[cfg(unix)]
     {
       use nix::unistd::{linkat, LinkatFlags};
-      let flag = if nofollow { LinkatFlags::NoFollowSymlink } else { LinkatFlags::FollowSymlink };
+      // the names of these flags are inverted relative to others
+      let flag = if nofollow { LinkatFlags::NoSymlinkFollow } else { LinkatFlags::SymlinkFollow };
       linkat(None, &oldpath, None, &newpath, flag)?;
     }
     #[cfg(not(unix))]
@@ -1147,9 +1146,9 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_read_link {}", path.display());
-    let path = tokio::fs::read_link(&path).await?;
-    let path_str = path.to_str().unwrap();
-    Ok(json!(path_str))
+    let targetpath = tokio::fs::read_link(&path).await?;
+    let targetpath_str = targetpath.to_str().unwrap();
+    Ok(json!(targetpath_str))
   };
 
   if is_sync {
@@ -1210,7 +1209,7 @@ fn op_truncate(
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && tokio::fs::metadata(path)
+          && tokio::fs::metadata(&path)
             .await
             .map_or(false, |m| m.is_dir()) =>
       {
@@ -1380,14 +1379,19 @@ fn op_utime(
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
-    debug!("op_utime {} {} {} {}", args.path, atime, mtime, nofollow);
-    if cfg!(unix) && nofollow {
-      #[cfg(unix)]
-      {
-        // TODO(jp4)
-      }
-    } else {
-      set_file_times(args.path, atime, mtime)?;
+    debug!("op_utime {} {} {} {}", path.display(), atime, mtime, nofollow);
+    #[cfg(unix)]
+    {
+      use nix::sys::stat::{utimensat, UtimensatFlags};
+      use nix::sys::time::{TimeSpec, TimeValLike};
+      let atime = TimeSpec::seconds(atime as i64);
+      let mtime = TimeSpec::seconds(mtime as i64);
+      let flag = if nofollow { UtimensatFlags::NoFollowSymlink } else { UtimensatFlags::FollowSymlink };
+      utimensat(None, &path, &atime, &mtime, flag)?;
+    }
+    #[cfg(not(unix))]
+    {
+      set_file_times(&path, atime, mtime)?;
     }
     Ok(json!({}))
   };
