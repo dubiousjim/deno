@@ -887,19 +887,60 @@ fn op_stat(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  // TODO(jp7) stat
-  let _ = atdir; // avoid unused warning
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_stat {} {}", path.display(), nofollow);
-    let metadata = if nofollow {
-      std::fs::symlink_metadata(&path)?
-    } else {
-      std::fs::metadata(&path)?
-    };
-    get_stat_json(metadata, None)
+    #[cfg(unix)]
+    {
+      use nix::sys::stat::{fstatat, SFlag, FileStat};
+      use nix::fcntl::AtFlags;
+      let flag = if nofollow { AtFlags::AT_SYMLINK_NOFOLLOW } else { AtFlags::AT_SYMLINK_FOLLOW };
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      let filestat: FileStat = fstatat(fd, &path, flag)?;
+      let sflag = SFlag::from_bits_truncate(filestat.st_mode);
+      // see https://unix.stackexchange.com/questions/91197
+      // not available on Linux, and their
+      // libc::statx(dirfd, &path, flags, mask, &statxbuf_with_stx_btime)
+      // doesn't apply to fd
+      #[cfg(target_os = "linux")]
+      let birthtime: i64 = 0;
+      // let birthtime: i64 = filestat.st_birthtime;
+      #[cfg(not(target_os = "linux"))]
+      let birthtime: i64 = filestat.st_birthtime;
+      let json_val = json!({
+        "isFile": sflag.contains(deno_fs::SFlag::S_IFREG),
+        "isDir": sflag.contains(deno_fs::SFlag::S_IFLNK),
+        "isSymlink": sflag.contains(deno_fs::SFlag::S_IFDIR),
+        "size": filestat.st_size,
+        // all times are i64
+        "modified": filestat.st_mtime, // changed when fdatasync
+        "accessed": filestat.st_atime,
+        "created": birthtime,
+        "ctime": filestat.st_ctime, // changed when fdatasync or chown/chmod/rename/moved
+        "dev": filestat.st_dev, // u64
+        "ino": filestat.st_ino, // u64
+        "mode": filestat.st_mode, // usually u32, may be u16 on Mac
+        "nlink": filestat.st_nlink, // u64
+        "uid": filestat.st_uid, // u32
+        "gid": filestat.st_gid, // u32
+        "rdev": filestat.st_rdev, // u64
+        "blksize": filestat.st_blksize, // i64
+        "blocks": filestat.st_blocks, // i64
+      });
+      Ok(json_val)
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let metadata = if nofollow {
+        std::fs::symlink_metadata(&path)?
+      } else {
+        std::fs::metadata(&path)?
+      };
+      get_stat_json(metadata, None)
+    }
   };
 
   if is_sync {
