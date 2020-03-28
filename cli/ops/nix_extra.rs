@@ -66,7 +66,6 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 
 //////////////////////
 
-/*
 /// From https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
 #[cfg(target_os = "linux")]
 macro_rules! syscall {
@@ -83,9 +82,33 @@ macro_rules! syscall {
         }
     )
 }
-*/
+
+
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
+
+use std::{ptr, mem};
+use libc::{statx, stat64, c_int, off64_t};
+
+/*
+pub trait IsMinusOne {
+    fn is_minus_one(&self) -> bool;
+}
+
+macro_rules! impl_is_minus_one {
+    ($($t:ident)*) => ($(impl IsMinusOne for $t {
+        fn is_minus_one(&self) -> bool {
+            *self == -1
+        }
+    })*)
+}
+
+impl_is_minus_one! { i8 i16 i32 i64 isize }
+*/
+
+pub fn cvt<T: std::sys::IsMinusOne>(t: T) -> std::io::Result<T> {
+    if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
+}
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 #[derive(Clone)]
@@ -110,7 +133,7 @@ unsafe fn try_statx(
   path: *const libc::c_char,
   flags: i32,
   mask: u32,
-) -> Option<io::Result<FileAttr>> {
+) -> Option<std::io::Result<FileAttr>> {
   use std::sync::atomic::{AtomicU8, Ordering};
 
   // Linux kernel prior to 4.11 or glibc prior to glibc 2.28 don't support `statx`
