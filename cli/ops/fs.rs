@@ -1295,7 +1295,7 @@ fn op_read_link(
       let targetpath_str = match atdir {
         Some(dir) => {
           let fd = dir.as_raw_fd();
-          readlinkat(fd, &path)
+          readlinkat(fd, &path)?
         }
         None => {
           let targetpath = std::fs::read_link(&path)?;
