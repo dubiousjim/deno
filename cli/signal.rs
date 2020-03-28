@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::OpError;
+
+#[cfg(unix)]
 use std::convert::TryFrom;
 
 #[cfg(unix)]

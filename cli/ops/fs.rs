@@ -576,7 +576,7 @@ fn op_chmod(
     {
       let _ = atdir; // avoid unused warning
                      // Still check file/dir exists on Windows
-      let _metadata = tokio::fs::metadata(&path).await?;
+      let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
     }
   };
