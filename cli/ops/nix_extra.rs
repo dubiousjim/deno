@@ -123,6 +123,7 @@ struct StatxExtraFields {
 
 // We prefer `statx` on Linux if available, which contains file creation time.
 // Default `stat64` contains no creation time.
+#[allow(dead_code)]
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 unsafe fn try_statx(
   fd: c_int,
