@@ -2,9 +2,9 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 export function linkSync(oldpath: string, newpath: string): void {
-  sendSync("op_link", { oldpath, newpath });
+  sendSync("op_link", { oldpath, newpath, nofollow: false });
 }
 
 export async function link(oldpath: string, newpath: string): Promise<void> {
-  await sendAsync("op_link", { oldpath, newpath });
+  await sendAsync("op_link", { oldpath, newpath, nofollow: false });
 }

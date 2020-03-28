@@ -118,6 +118,7 @@ struct OpenArgs {
   options: Option<OpenOptions>,
   open_mode: Option<String>,
   mode: Option<u32>,
+  nofollow: bool,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -139,6 +140,7 @@ fn op_open(
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   let state_ = state.clone();
 
   let mut open_options = tokio_open_options(args.mode);
@@ -529,6 +531,7 @@ struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
   mode: u32,
+  nofollow: bool,
 }
 
 fn op_chmod(
@@ -538,6 +541,7 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
@@ -581,6 +585,7 @@ struct ChownArgs {
   path: String,
   uid: Option<u32>,
   gid: Option<u32>,
+  nofollow: bool,
 }
 
 fn op_chown(
@@ -590,6 +595,7 @@ fn op_chown(
 ) -> Result<JsonOp, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
 
   state.check_write(&path)?;
 
@@ -1010,6 +1016,7 @@ struct LinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  nofollow: bool,
 }
 
 fn op_link(
@@ -1020,6 +1027,7 @@ fn op_link(
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let nofollow = args.nofollow;
 
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
@@ -1316,6 +1324,7 @@ struct UtimeArgs {
   path: String,
   atime: i64,
   mtime: i64,
+  nofollow: bool,
 }
 
 fn op_utime(
@@ -1325,6 +1334,7 @@ fn op_utime(
 ) -> Result<JsonOp, OpError> {
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   // require times to be 63 bit unsigned
   let atime: u64 = args.atime.try_into()?;
   let mtime: u64 = args.mtime.try_into()?;

@@ -15,7 +15,8 @@ export function utimeSync(
       path,
       // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
       atime: toSecondsFromEpoch(atime),
-      mtime: toSecondsFromEpoch(mtime)
+      mtime: toSecondsFromEpoch(mtime),
+      nofollow: false
     });
   } else {
     sendSync("op_futime", {
@@ -36,7 +37,8 @@ export async function utime(
       path,
       // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
       atime: toSecondsFromEpoch(atime),
-      mtime: toSecondsFromEpoch(mtime)
+      mtime: toSecondsFromEpoch(mtime),
+      nofollow: false
     });
   } else {
     await sendAsync("op_futime", {
