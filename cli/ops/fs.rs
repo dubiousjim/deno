@@ -894,11 +894,16 @@ fn op_stat(
     debug!("op_stat {} {}", path.display(), nofollow);
     #[cfg(unix)]
     {
-      use nix::sys::stat::{fstatat, SFlag, FileStat};
+      use nix::sys::stat::{fstatat, lstat, stat, SFlag, FileStat};
       use nix::fcntl::AtFlags;
-      let flag = if nofollow { AtFlags::AT_SYMLINK_NOFOLLOW } else { AtFlags::AT_SYMLINK_FOLLOW };
-      let fd = atdir.map(|dir| dir.as_raw_fd());
-      let filestat: FileStat = fstatat(fd, &path, flag)?;
+      let filestat: FileStat = match atdir {
+        Some(dir) => {
+          let flag = if nofollow { AtFlags::AT_SYMLINK_NOFOLLOW } else { AtFlags::AT_SYMLINK_FOLLOW };
+          fstatat(dir.as_raw_fd(), &path, &flag)?
+        }
+        None if nofollow => lstat(&path)?,
+        None => stat(&path)?,
+      }
       let sflag = SFlag::from_bits_truncate(filestat.st_mode);
       // see https://unix.stackexchange.com/questions/91197
       // not available on Linux, and their
@@ -910,9 +915,9 @@ fn op_stat(
       #[cfg(not(target_os = "linux"))]
       let birthtime: i64 = filestat.st_birthtime;
       let json_val = json!({
-        "isFile": sflag.contains(deno_fs::SFlag::S_IFREG),
-        "isDir": sflag.contains(deno_fs::SFlag::S_IFLNK),
-        "isSymlink": sflag.contains(deno_fs::SFlag::S_IFDIR),
+        "isFile": sflag.contains(SFlag::S_IFREG),
+        "isDir": sflag.contains(SFlag::S_IFLNK),
+        "isSymlink": sflag.contains(SFlag::S_IFDIR),
         "size": filestat.st_size,
         // all times are i64
         "modified": filestat.st_mtime, // changed when fdatasync
