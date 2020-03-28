@@ -91,7 +91,7 @@ struct OpenArgs {
   mode: Option<u32>,
   nofollow: bool,
   #[allow(unused)]
-  atrid: Option<i32>, // FIXME(jp4)
+  atrid: Option<i32>, // FIXME(jp5) open
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -525,7 +525,7 @@ fn op_chmod(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -537,7 +537,6 @@ fn op_chmod(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
@@ -559,12 +558,14 @@ fn op_chmod(
       use nix::sys::stat::{fchmodat, Mode, FchmodatFlags};
       let nix_mode = Mode::from_bits_truncate(mode);
       let flag = if nofollow { FchmodatFlags::NoFollowSymlink } else { FchmodatFlags::FollowSymlink };
-      fchmodat(None, &path, nix_mode, flag)?;
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      fchmodat(fd, &path, nix_mode, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
+      let _ = atdir; // avoid unused warning
       // Still check file/dir exists on Windows
       let _metadata = tokio::fs::metadata(&path).await?;
       return Err(OpError::not_implemented());
@@ -607,7 +608,7 @@ fn op_chown(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -619,7 +620,6 @@ fn op_chown(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
@@ -631,12 +631,14 @@ fn op_chown(
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
       let flag = if nofollow { FchownatFlags::NoFollowSymlink } else { FchownatFlags::FollowSymlink };
-      fchownat(None, &path, nix_uid, nix_gid, flag)?;
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      fchownat(fd, &path, nix_uid, nix_gid, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
+      let _ = atdir; // avoid unused warning
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
@@ -873,7 +875,7 @@ fn op_stat(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -885,7 +887,8 @@ fn op_stat(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
+  // TODO(jp6) stat
+  let _ = atdir; // avoid unused warning
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1019,7 +1022,7 @@ fn op_rename(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1031,7 +1034,8 @@ fn op_rename(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
+  // TODO(jp6) rename
+  let _ = atdir; // avoid unused warning
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1080,7 +1084,8 @@ struct LinkArgs {
   oldpath: String,
   newpath: String,
   nofollow: bool,
-  atrid: Option<i32>,
+  oldatrid: Option<i32>,
+  newatrid: Option<i32>,
 }
 
 fn op_link(
@@ -1096,12 +1101,12 @@ fn op_link(
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
 
-  let atdir = match args.atrid {
-    Some(atrid) if cfg!(unix) => {
+  let oldatdir = match args.oldatrid {
+    Some(oldatrid) if cfg!(unix) => {
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(oldatrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1113,7 +1118,23 @@ fn op_link(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
+  let newatdir = match args.newatrid {
+    Some(newatrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(newatrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
@@ -1128,10 +1149,14 @@ fn op_link(
       use nix::unistd::{linkat, LinkatFlags};
       // the names of these flags are inverted relative to others
       let flag = if nofollow { LinkatFlags::NoSymlinkFollow } else { LinkatFlags::SymlinkFollow };
-      linkat(None, &oldpath, None, &newpath, flag)?;
+      let oldfd = oldatdir.map(|dir| dir.as_raw_fd());
+      let newfd = newatdir.map(|dir| dir.as_raw_fd());
+      linkat(oldfd, &oldpath, newfd, &newpath, flag)?;
     }
     #[cfg(not(unix))]
     {
+      let _ = oldatdir; // avoid unused warning
+      let _ = newatdir;
       std::fs::hard_link(&oldpath, &newpath)?;
     }
     Ok(json!({}))
@@ -1171,7 +1196,7 @@ fn op_symlink(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1183,7 +1208,8 @@ fn op_symlink(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
+  // TODO(jp6) symlink
+  let _ = atdir; // avoid unused warning
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1235,7 +1261,7 @@ fn op_read_link(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1247,7 +1273,8 @@ fn op_read_link(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
+  // TODO(jp6) readLink
+  let _ = atdir; // avoid unused warning
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1276,7 +1303,7 @@ struct TruncateArgs {
   create_new: bool,
   nofollow: bool,
   #[allow(unused)]
-  atrid: Option<i32>, // FIXME(jp4)
+  atrid: Option<i32>, // FIXME(jp5) truncate
 }
 
 fn op_truncate(
@@ -1490,7 +1517,7 @@ fn op_utime(
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid)
+        .get::<StreamResourceHolder>(atrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1502,7 +1529,6 @@ fn op_utime(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  let _ = atdir;
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
@@ -1515,11 +1541,13 @@ fn op_utime(
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
       let flag = if nofollow { UtimensatFlags::NoFollowSymlink } else { UtimensatFlags::FollowSymlink };
-      utimensat(None, &path, &atime, &mtime, flag)?;
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      utimensat(fd, &path, &atime, &mtime, flag)?;
     }
     #[cfg(not(unix))]
     {
       use utime::set_file_times;
+      let _ = atdir; // avoid unused warning
       set_file_times(&path, atime, mtime)?;
     }
     Ok(json!({}))
