@@ -336,7 +336,7 @@ pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io:
   }
   cfg_has_statx! {
     if let Some(ret) = unsafe { try_statx(
-      dirfd.upwrap_or(libc::AT_FDCWD),
+      dirfd.unwrap_or(libc::AT_FDCWD),
       p.as_ptr(),
       libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
       libc::STATX_ALL,
