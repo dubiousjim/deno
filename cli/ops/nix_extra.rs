@@ -330,28 +330,24 @@ pub fn lstat(p: &Path) -> io::Result<FileAttr> {
 pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<FileAttr> {
   let p = cstr(p)?;
   let flag = if nofollow {
-    libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
+    libc::AT_SYMLINK_NOFOLLOW
   } else {
-    libc::AT_STATX_SYNC_AS_STAT,
-  }
+    0
+  };
+  let fd = dirfd.unwrap_or(libc::AT_FDCWD);
   cfg_has_statx! {
     if let Some(ret) = unsafe { try_statx(
-      dirfd.unwrap_or(libc::AT_FDCWD),
+      fd,
       p.as_ptr(),
-      libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
+      flag | libc::AT_STATX_SYNC_AS_STAT,
       libc::STATX_ALL,
     ) } {
       return ret;
     }
   }
 
-  let _ = dirfd; // FIXME
   let mut stat: stat64 = unsafe { mem::zeroed() };
-  if nofollow {
-    cvt(unsafe { lstat64(p.as_ptr(), &mut stat) })?;
-  } else {
-    cvt(unsafe { stat64(p.as_ptr(), &mut stat) })?;
-  }
+  cvt(unsafe { fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
   Ok(FileAttr::from_stat64(stat))
 }
 
