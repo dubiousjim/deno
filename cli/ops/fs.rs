@@ -16,7 +16,6 @@ use std::time::UNIX_EPOCH;
 use tokio;
 
 use rand::{thread_rng, Rng};
-use utime::set_file_times;
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -1391,6 +1390,7 @@ fn op_utime(
     }
     #[cfg(not(unix))]
     {
+      use utime::set_file_times;
       set_file_times(&path, atime, mtime)?;
     }
     Ok(json!({}))
