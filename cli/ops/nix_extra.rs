@@ -1,6 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // These are functions that should/will be in the nix crate, but aren't yet in nix 0.17
 
+#[macro_use]
+extern crate cfg_if;
+
 use nix::errno::Errno;
 use nix::fcntl::AtFlags;
 use nix::unistd::AccessFlags;
@@ -65,8 +68,21 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 
 //////////////////////
 
+use std::path::Path;
+use std::ffi::CString;
+#[allow(unused_imports)]
+use std::{ptr, mem};
+#[allow(unused_imports)]
+use libc::{statx, stat64, c_int, off64_t};
+
+#[allow(dead_code)]
+fn cstr(path: &Path) -> std::io::Result<CString> {
+    Ok(CString::new(path.as_os_str().as_bytes())?)
+}
+
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
 #[cfg(target_os = "linux")]
+#[allow(unused_imports)]
 macro_rules! syscall {
     (fn $name:ident($sysname:ident, $($arg_name:ident: $t:ty),*) -> $ret:ty) => (
         unsafe fn $name($($arg_name:$t),*) -> $ret {
@@ -82,11 +98,6 @@ macro_rules! syscall {
 }
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
-
-#[allow(unused_imports)]
-use std::{ptr, mem};
-#[allow(unused_imports)]
-use libc::{statx, stat64, c_int, off64_t};
 
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;
@@ -330,7 +341,7 @@ pub fn lstat(p: &Path) -> io::Result<FileAttr> {
 #[allow(dead_code)]
 // pub fn my_fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<FileAttr> {
 pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<FileAttr> {
-  let p = cstr(p)?;
+  let p = cstr(path)?;
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
   } else {
