@@ -91,7 +91,7 @@ struct OpenArgs {
   mode: Option<u32>,
   nofollow: bool,
   #[allow(unused)]
-  atrid: Option<i32>,
+  atrid: Option<i32>, // FIXME(jp4)
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -505,7 +505,6 @@ struct ChmodArgs {
   path: String,
   mode: u32,
   nofollow: bool,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -520,6 +519,25 @@ fn op_chmod(
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
@@ -570,7 +588,6 @@ struct ChownArgs {
   uid: Option<u32>,
   gid: Option<u32>,
   nofollow: bool,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -584,6 +601,25 @@ fn op_chown(
   let nofollow = args.nofollow;
 
   state.check_write(&path)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
@@ -818,7 +854,6 @@ struct StatArgs {
   promise_id: Option<u64>,
   path: String,
   nofollow: bool,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -832,6 +867,25 @@ fn op_stat(
   let nofollow = args.nofollow;
 
   state.check_read(&path)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -939,7 +993,6 @@ struct RenameArgs {
   oldpath: String,
   newpath: String,
   create_new: bool,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -960,6 +1013,25 @@ fn op_rename(
   if create_new {
     state.check_read(&newpath)?;
   }
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1008,7 +1080,6 @@ struct LinkArgs {
   oldpath: String,
   newpath: String,
   nofollow: bool,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1024,6 +1095,25 @@ fn op_link(
 
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
@@ -1062,7 +1152,6 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1076,6 +1165,25 @@ fn op_symlink(
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
 
   state.check_write(&newpath)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1109,7 +1217,6 @@ fn op_symlink(
 struct ReadLinkArgs {
   promise_id: Option<u64>,
   path: String,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1122,6 +1229,25 @@ fn op_read_link(
   let path = resolve_from_cwd(Path::new(&args.path))?;
 
   state.check_read(&path)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
@@ -1150,7 +1276,7 @@ struct TruncateArgs {
   create_new: bool,
   nofollow: bool,
   #[allow(unused)]
-  atrid: Option<i32>,
+  atrid: Option<i32>, // FIXME(jp4)
 }
 
 fn op_truncate(
@@ -1342,7 +1468,6 @@ struct UtimeArgs {
   atime: i64,
   mtime: i64,
   nofollow: bool,
-  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1359,6 +1484,25 @@ fn op_utime(
   let mtime: u64 = args.mtime.try_into()?;
 
   state.check_write(&path)?;
+
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None
+  };
+  let _ = atdir;
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
