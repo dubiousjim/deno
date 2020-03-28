@@ -326,10 +326,11 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
+      nix::Error::Sys(EEXIST) => ErrorKind::AlreadyExists,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(code) => {
-        dbg!("unexpected nix::Error::Sys({})", code);
-        ErrorKind::Other
+        dbg!("unexpected nix::Error::Sys", code);
+        unreachable!()
       }
       nix::Error::InvalidPath => ErrorKind::TypeError,
       nix::Error::InvalidUtf8 => ErrorKind::InvalidData,
