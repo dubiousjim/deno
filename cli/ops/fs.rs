@@ -553,17 +553,14 @@ fn op_chmod(
 
   state.check_write(&path)?;
 
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_chmod {} {:o} {}", path.display(), mode, nofollow);
     #[cfg(unix)]
     {
-      if nofollow {
-        use nix::sys::stat::{fchmodat, FchmodatFlags};
-        use nix::sys::stat::Mode;
-        let nix_mode = Mode::from_bits_truncate(mode);
-        fchmodat(None, &path, nix_mode, FchmodatFlags::NoFollowSymlink)?;
-      } else {
+      /*
+        // futures::executor (async move) version
         use std::os::unix::fs::PermissionsExt;
         /*
         let metadata = tokio::fs::metadata(&path).await?;
@@ -572,7 +569,11 @@ fn op_chmod(
         */
         let permissions = PermissionsExt::from_mode(mode);
         tokio::fs::set_permissions(&path, permissions).await?;
-      }
+       */
+      use nix::sys::stat::{fchmodat, Mode, FchmodatFlags};
+      let nix_mode = Mode::from_bits_truncate(mode);
+      let flag = if nofollow { FchmodatFlags::NoFollowSymlink } else { FchmodatFlags::FollowSymlink };
+      fchmodat(None, &path, nix_mode, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
@@ -586,9 +587,10 @@ fn op_chmod(
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
