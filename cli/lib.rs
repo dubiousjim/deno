@@ -14,8 +14,8 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 #[cfg(unix)]
-#[macro_use]
-extern crate cfg_if;
+// #[macro_use]
+// extern crate cfg_if;
 
 extern crate rand;
 extern crate regex;
