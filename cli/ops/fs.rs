@@ -1045,20 +1045,19 @@ fn op_rename(
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if create_new {
       // like `mv -Tn`, we don't follow symlinks
-      let old_meta = tokio::fs::symlink_metadata(&oldpath).await?;
+      let old_meta = std::fs::symlink_metadata(&oldpath)?;
       if cfg!(unix) && old_meta.is_dir() {
         // on Unix, mv from dir to file always fails, but to emptydir is ok
-        tokio::fs::create_dir(&newpath).await?;
+        std::fs::create_dir(&newpath)?;
       } else {
         // on Windows, mv from dir to dir always fails, but to file is ok
-        let mut open_options = tokio::fs::OpenOptions::new();
+        let mut open_options = std::fs::OpenOptions::new();
         open_options.write(true).create_new(true);
-        if let Err(e) = open_options.open(&newpath).await {
+        if let Err(e) = open_options.open(&newpath) {
           // if newpath.is_dir(), prefer to fail with AlreadyExists
           if cfg!(windows)
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && tokio::fs::metadata(&newpath)
-              .await
+            && std::fs::metadata(&newpath)
               .map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
@@ -1068,7 +1067,7 @@ fn op_rename(
         }
       }
     }
-    tokio::fs::rename(&oldpath, &newpath).await?;
+    std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   };
 
