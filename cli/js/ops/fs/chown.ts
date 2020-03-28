@@ -1,7 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 
-export function chownSync(path: string | number, uid?: number, gid?: number): void {
+export function chownSync(
+  path: string | number,
+  uid?: number,
+  gid?: number
+): void {
   if (typeof path == "string") {
     sendSync("op_chown", { path, uid, gid, nofollow: false });
   } else {

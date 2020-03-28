@@ -56,7 +56,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fchdir", s.stateful_json_op(op_fchdir));
 }
 
-fn tokio_open_options(mode: Option<u32>, nofollow: bool) -> tokio::fs::OpenOptions {
+fn tokio_open_options(
+  mode: Option<u32>,
+  nofollow: bool,
+) -> tokio::fs::OpenOptions {
   if let Some(mode) = mode {
     #[allow(unused_mut)]
     let mut std_options = std::fs::OpenOptions::new();
@@ -535,7 +538,7 @@ fn op_chmod(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3) mixed blocking
@@ -545,19 +548,23 @@ fn op_chmod(
     #[cfg(unix)]
     {
       /*
-        // futures::executor (async move) version
-        use std::os::unix::fs::PermissionsExt;
-        /*
-        let metadata = tokio::fs::metadata(&path).await?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(mode);
-        */
-        let permissions = PermissionsExt::from_mode(mode);
-        tokio::fs::set_permissions(&path, permissions).await?;
+       // futures::executor (async move) version
+       use std::os::unix::fs::PermissionsExt;
+       /*
+       let metadata = tokio::fs::metadata(&path).await?;
+       let mut permissions = metadata.permissions();
+       permissions.set_mode(mode);
        */
-      use nix::sys::stat::{fchmodat, Mode, FchmodatFlags};
+       let permissions = PermissionsExt::from_mode(mode);
+       tokio::fs::set_permissions(&path, permissions).await?;
+      */
+      use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
       let nix_mode = Mode::from_bits_truncate(mode);
-      let flag = if nofollow { FchmodatFlags::NoFollowSymlink } else { FchmodatFlags::FollowSymlink };
+      let flag = if nofollow {
+        FchmodatFlags::NoFollowSymlink
+      } else {
+        FchmodatFlags::FollowSymlink
+      };
       let fd = atdir.map(|dir| dir.as_raw_fd());
       fchmodat(fd, &path, nix_mode, flag)?;
       Ok(json!({}))
@@ -566,7 +573,7 @@ fn op_chmod(
     #[cfg(not(unix))]
     {
       let _ = atdir; // avoid unused warning
-      // Still check file/dir exists on Windows
+                     // Still check file/dir exists on Windows
       let _metadata = tokio::fs::metadata(&path).await?;
       return Err(OpError::not_implemented());
     }
@@ -576,7 +583,8 @@ fn op_chmod(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -618,19 +626,29 @@ fn op_chown(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
-    debug!("op_chown {} {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff), nofollow);
+    debug!(
+      "op_chown {} {} {} {}",
+      path.display(),
+      args.uid.unwrap_or(0xffffffff),
+      args.gid.unwrap_or(0xffffffff),
+      nofollow
+    );
     #[cfg(unix)]
     {
-      use nix::unistd::{fchownat, Gid, Uid, FchownatFlags};
+      use nix::unistd::{fchownat, FchownatFlags, Gid, Uid};
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
-      let flag = if nofollow { FchownatFlags::NoFollowSymlink } else { FchownatFlags::FollowSymlink };
+      let flag = if nofollow {
+        FchownatFlags::NoFollowSymlink
+      } else {
+        FchownatFlags::FollowSymlink
+      };
       let fd = atdir.map(|dir| dir.as_raw_fd());
       fchownat(fd, &path, nix_uid, nix_gid, flag)?;
       Ok(json!({}))
@@ -639,7 +657,7 @@ fn op_chown(
     #[cfg(not(unix))]
     {
       let _ = atdir; // avoid unused warning
-      // Still check file/dir exists on Windows
+                     // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
     }
@@ -649,7 +667,8 @@ fn op_chown(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -885,7 +904,7 @@ fn op_stat(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3) mixed blocking
@@ -894,11 +913,15 @@ fn op_stat(
     debug!("op_stat {} {}", path.display(), nofollow);
     #[cfg(unix)]
     {
-      use nix::sys::stat::{fstatat, lstat, stat, SFlag, FileStat};
       use nix::fcntl::AtFlags;
+      use nix::sys::stat::{fstatat, lstat, stat, FileStat, SFlag};
       let filestat: FileStat = match atdir {
         Some(dir) => {
-          let flag = if nofollow { AtFlags::AT_SYMLINK_NOFOLLOW } else { AtFlags::AT_SYMLINK_FOLLOW };
+          let flag = if nofollow {
+            AtFlags::AT_SYMLINK_NOFOLLOW
+          } else {
+            AtFlags::AT_SYMLINK_FOLLOW
+          };
           fstatat(dir.as_raw_fd(), &path, flag)?
         }
         None if nofollow => lstat(&path)?,
@@ -952,7 +975,8 @@ fn op_stat(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1080,7 +1104,7 @@ fn op_rename(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
   // TODO(jp5) rename (complex)
   let _ = atdir; // avoid unused warning
@@ -1103,8 +1127,7 @@ fn op_rename(
           // if newpath.is_dir(), prefer to fail with AlreadyExists
           if cfg!(windows)
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && std::fs::metadata(&newpath)
-              .map_or(false, |m| m.is_dir())
+            && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
             return Err(OpError::already_exists("Cannot create a file when that file already exists. (os error 183)".to_string()));
@@ -1121,7 +1144,8 @@ fn op_rename(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1165,7 +1189,7 @@ fn op_link(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
   let newatdir = match args.newatrid {
     Some(newatrid) if cfg!(unix) => {
@@ -1182,22 +1206,31 @@ fn op_link(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
-    debug!("op_link {} {} {}", oldpath.display(), newpath.display(), nofollow);
+    debug!(
+      "op_link {} {} {}",
+      oldpath.display(),
+      newpath.display(),
+      nofollow
+    );
     /*
-        // futures::executor (async move) version
-        tokio::fs::hard_link(&oldpath, &newpath).await?;
-     */
+       // futures::executor (async move) version
+       tokio::fs::hard_link(&oldpath, &newpath).await?;
+    */
     #[cfg(unix)]
     {
       use nix::unistd::{linkat, LinkatFlags};
       // the names of these flags are inverted relative to others
-      let flag = if nofollow { LinkatFlags::NoSymlinkFollow } else { LinkatFlags::SymlinkFollow };
+      let flag = if nofollow {
+        LinkatFlags::NoSymlinkFollow
+      } else {
+        LinkatFlags::SymlinkFollow
+      };
       let oldfd = oldatdir.map(|dir| dir.as_raw_fd());
       let newfd = newatdir.map(|dir| dir.as_raw_fd());
       linkat(oldfd, &oldpath, newfd, &newpath, flag)?;
@@ -1215,7 +1248,8 @@ fn op_link(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1255,7 +1289,7 @@ fn op_symlink(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3) mixed blocking
@@ -1277,8 +1311,8 @@ fn op_symlink(
     #[cfg(not(unix))]
     {
       let _ = atdir; // avoid unused warning
-      // Unlike with chmod/chown, here we don't
-      // require `oldpath` to exist on Windows
+                     // Unlike with chmod/chown, here we don't
+                     // require `oldpath` to exist on Windows
       let _ = oldpath;
       return Err(OpError::not_implemented());
     }
@@ -1288,7 +1322,8 @@ fn op_symlink(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1326,7 +1361,7 @@ fn op_read_link(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3) mixed blocking
@@ -1361,7 +1396,8 @@ fn op_read_link(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1601,20 +1637,30 @@ fn op_utime(
       Some(futures::executor::block_on(tokio_dir.try_clone())?)
     }
     Some(_) => return Err(OpError::not_implemented()),
-    None => None
+    None => None,
   };
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
-    debug!("op_utime {} {} {} {}", path.display(), atime, mtime, nofollow);
+    debug!(
+      "op_utime {} {} {} {}",
+      path.display(),
+      atime,
+      mtime,
+      nofollow
+    );
     #[cfg(unix)]
     {
       use nix::sys::stat::{utimensat, UtimensatFlags};
       use nix::sys::time::{TimeSpec, TimeValLike};
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
-      let flag = if nofollow { UtimensatFlags::NoFollowSymlink } else { UtimensatFlags::FollowSymlink };
+      let flag = if nofollow {
+        UtimensatFlags::NoFollowSymlink
+      } else {
+        UtimensatFlags::FollowSymlink
+      };
       let fd = atdir.map(|dir| dir.as_raw_fd());
       utimensat(fd, &path, &atime, &mtime, flag)?;
     }
@@ -1631,10 +1677,10 @@ fn op_utime(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
-
 }
 
 fn op_cwd(
@@ -1855,7 +1901,8 @@ fn op_futime(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1952,10 +1999,15 @@ fn op_fchown(
   let blocking = move || {
     #[cfg(unix)]
     {
-      use nix::unistd::{Gid, Uid};
       use super::nix_extra::fchown;
+      use nix::unistd::{Gid, Uid};
       let fd = check_open_for_writing(&file)?;
-      debug!("op_fchown {} {} {}", rid, args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
+      debug!(
+        "op_fchown {} {} {}",
+        rid,
+        args.uid.unwrap_or(0xffffffff),
+        args.gid.unwrap_or(0xffffffff)
+      );
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
       fchown(fd, nix_uid, nix_gid)?;
@@ -1973,7 +2025,8 @@ fn op_fchown(
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
   } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -2017,36 +2070,36 @@ fn op_fchdir(
   Ok(JsonOp::Sync(json!({})))
 }
 
-  /*
-  blocking_json(is_sync, move || {
-    ...
-    Ok(json!({}))
-  })
-  */
+/*
+blocking_json(is_sync, move || {
+  ...
+  Ok(json!({}))
+})
+*/
 
-  /*
-  let blocking = move || {
-    ...
-    Ok(json!({}))
-  };
-  if is_sync {
-    let res = blocking()?;
-    Ok(JsonOp::Sync(res))
-  } else {
-    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
-  */
+/*
+let blocking = move || {
+  ...
+  Ok(json!({}))
+};
+if is_sync {
+  let res = blocking()?;
+  Ok(JsonOp::Sync(res))
+} else {
+  let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+  Ok(JsonOp::Async(fut.boxed_local()))
+}
+*/
 
-  /*
-  let fut = async move {
-    ...
-    Ok(json!({}))
-  };
-  if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
-  } else {
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
-  */
+/*
+let fut = async move {
+  ...
+  Ok(json!({}))
+};
+if is_sync {
+  let buf = futures::executor::block_on(fut)?;
+  Ok(JsonOp::Sync(buf))
+} else {
+  Ok(JsonOp::Async(fut.boxed_local()))
+}
+*/

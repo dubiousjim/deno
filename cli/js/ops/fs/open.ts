@@ -20,7 +20,13 @@ export function openSync(
   options: OpenOptions | undefined
 ): number {
   const mode: number | undefined = options?.mode;
-  return sendSync("op_open", { path, options, openMode, mode, nofollow: false });
+  return sendSync("op_open", {
+    path,
+    options,
+    openMode,
+    mode,
+    nofollow: false
+  });
 }
 
 export function open(

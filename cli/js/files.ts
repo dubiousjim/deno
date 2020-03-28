@@ -151,7 +151,8 @@ export class File
     return chownSync(this.rid, uid, gid);
   }
 
-  chdir(): void { // FIXME
+  chdir(): void {
+    // FIXME
     return chdir(this.rid);
   }
 
