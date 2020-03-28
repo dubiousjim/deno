@@ -71,12 +71,11 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 macro_rules! syscall {
     (fn $name:ident($($arg_name:ident: $t:ty),*) -> $ret:ty) => (
         unsafe fn $name($($arg_name:$t),*) -> $ret {
-            // This looks like a hack, but concat_idents only accepts idents
-            // (not paths).
             use libc::*;
-
             syscall(
-                concat_idents!(SYS_, $name),
+                // concat_idents only accepts idents (not paths).
+                // concat_idents!(SYS_, $name),
+                concat!(SYS_, $name),
                 $($arg_name as c_long),*
             ) as $ret
         }
@@ -107,7 +106,7 @@ macro_rules! impl_is_minus_one {
 impl_is_minus_one! { i8 i16 i32 i64 isize }
 */
 
-impl_is_minus_one! { i8 }
+impl_is_minus_one! { i32 }
 
 pub fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
     if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
