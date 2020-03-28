@@ -620,14 +620,11 @@ fn op_chown(
     debug!("op_chown {} {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff), nofollow);
     #[cfg(unix)]
     {
-      if nofollow {
-        // TODO(jp4)
-      } else {
-        use nix::unistd::{chown, Gid, Uid};
-        let nix_uid = args.uid.map(Uid::from_raw);
-        let nix_gid = args.gid.map(Gid::from_raw);
-        chown(&path, nix_uid, nix_gid)?;
-      }
+      use nix::unistd::{fchownat, Gid, Uid, FchownatFlags};
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
+      let flag = if nofollow { FchownatFlags::NoFollowSymlink } else { FchownatFlags::FollowSymlink };
+      fchownat(None, &path, nix_uid, nix_gid, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
