@@ -318,6 +318,15 @@ impl From<&serde_json::error::Error> for OpError {
   }
 }
 
+impl From<std::ffi::OsString> for OpError {
+  fn from(_error: std::ffi::OsString) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: "invalid Unicode".to_string(),
+    }
+  }
+}
+
 #[cfg(unix)]
 impl From<nix::Error> for OpError {
   fn from(error: nix::Error) -> Self {
