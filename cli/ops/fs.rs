@@ -550,7 +550,6 @@ fn op_chmod(
   let nofollow = args.nofollow;
   let mode = args.mode & 0o777;
 
-  let _ = nofollow; // TODO(jp4)
 
   state.check_write(&path)?;
 
@@ -559,19 +558,27 @@ fn op_chmod(
     debug!("op_chmod {} {:o} {}", path.display(), mode, nofollow);
     #[cfg(unix)]
     {
-      use std::os::unix::fs::PermissionsExt;
-      /*
-      let metadata = tokio::fs::metadata(&path).await?;
-      let mut permissions = metadata.permissions();
-      permissions.set_mode(mode);
-      */
-      let permissions = PermissionsExt::from_mode(mode);
-      tokio::fs::set_permissions(&path, permissions).await?;
+      if nofollow {
+        use nix::sys::stat::{fchmodat, FchmodatFlags};
+        use nix::sys::stat::Mode;
+        let nix_mode = Mode::from_bits_truncate(mode);
+        fchmodat(None, &path, nix_mode, FchmodatFlags::NoFollowSymlink)?;
+      } else {
+        use std::os::unix::fs::PermissionsExt;
+        /*
+        let metadata = tokio::fs::metadata(&path).await?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(mode);
+        */
+        let permissions = PermissionsExt::from_mode(mode);
+        tokio::fs::set_permissions(&path, permissions).await?;
+      }
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
+      let _ = nofollow; // avoid unused warning
       // Still check file/dir exists on Windows
       let _metadata = tokio::fs::metadata(&path).await?;
       return Err(OpError::not_implemented());
@@ -605,8 +612,6 @@ fn op_chown(
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let nofollow = args.nofollow;
 
-  let _ = nofollow; // TODO(jp4)
-
   state.check_write(&path)?;
 
   // FIXME(jp3)
@@ -615,15 +620,20 @@ fn op_chown(
     debug!("op_chown {} {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff), nofollow);
     #[cfg(unix)]
     {
-      use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = args.uid.map(Uid::from_raw);
-      let nix_gid = args.gid.map(Gid::from_raw);
-      chown(&path, nix_uid, nix_gid)?;
+      if nofollow {
+        // TODO(jp4)
+      } else {
+        use nix::unistd::{chown, Gid, Uid};
+        let nix_uid = args.uid.map(Uid::from_raw);
+        let nix_gid = args.gid.map(Gid::from_raw);
+        chown(&path, nix_uid, nix_gid)?;
+      }
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
+      let _ = nofollow; // avoid unused warning
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
@@ -1039,15 +1049,20 @@ fn op_link(
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
   let nofollow = args.nofollow;
 
-  let _ = nofollow; // TODO(jp4)
-
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
     debug!("op_link {} {} {}", oldpath.display(), newpath.display(), nofollow);
-    tokio::fs::hard_link(&oldpath, &newpath).await?;
+    if cfg!(unix) && nofollow {
+      #[cfg(unix)]
+      {
+        // TODO(jp4)
+      }
+    } else {
+      tokio::fs::hard_link(&oldpath, &newpath).await?;
+    }
     Ok(json!({}))
   };
 
@@ -1353,15 +1368,20 @@ fn op_utime(
   let atime: u64 = args.atime.try_into()?;
   let mtime: u64 = args.mtime.try_into()?;
 
-  let _ = nofollow; // TODO(jp4)
-
   state.check_write(&path)?;
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_utime {} {} {} {}", args.path, atime, mtime, nofollow);
-    set_file_times(args.path, atime, mtime)?;
+    if cfg!(unix) && nofollow {
+      #[cfg(unix)]
+      {
+        // TODO(jp4)
+      }
+    } else {
+      set_file_times(args.path, atime, mtime)?;
+    }
     Ok(json!({}))
   };
 
