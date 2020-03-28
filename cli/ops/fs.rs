@@ -1306,7 +1306,7 @@ fn op_read_link(
           */
         }
       };
-      let targetstr = target.into_string()?;
+      targetstr = target.into_string()?;
     }
     #[cfg(not(unix))]
     {
