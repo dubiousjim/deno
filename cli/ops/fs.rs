@@ -887,24 +887,26 @@ fn op_stat(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  // TODO(jp6) stat
+  // TODO(jp7) stat
   let _ = atdir; // avoid unused warning
 
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_stat {} {}", path.display(), nofollow);
     let metadata = if nofollow {
-      tokio::fs::symlink_metadata(&path).await?
+      std::fs::symlink_metadata(&path)?
     } else {
-      tokio::fs::metadata(&path).await?
+      std::fs::metadata(&path)?
     };
     get_stat_json(metadata, None)
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1034,11 +1036,12 @@ fn op_rename(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  // TODO(jp6) rename
+  // TODO(jp5) rename (complex)
   let _ = atdir; // avoid unused warning
 
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     if create_new {
       // like `mv -Tn`, we don't follow symlinks
@@ -1070,9 +1073,10 @@ fn op_rename(
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1208,32 +1212,38 @@ fn op_symlink(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  // TODO(jp6) symlink
-  let _ = atdir; // avoid unused warning
 
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_symlink {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
     {
-      use tokio::fs::os::unix::symlink;
-      symlink(&oldpath, &newpath).await?;
+      /*
+      use std::fs::os::unix::symlink;
+      symlink(&oldpath, &newpath)?;
+      */
+      use nix::unistd::symlinkat;
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      symlinkat(&oldpath, fd, &newpath)?;
       Ok(json!({}))
     }
     // TODO Implement symlink, use type for Windows
     #[cfg(not(unix))]
     {
+      let _ = atdir; // avoid unused warning
       // Unlike with chmod/chown, here we don't
       // require `oldpath` to exist on Windows
-      let _ = oldpath; // avoid unused warning
+      let _ = oldpath;
       return Err(OpError::not_implemented());
     }
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -1273,21 +1283,41 @@ fn op_read_link(
     Some(_) => return Err(OpError::not_implemented()),
     None => None
   };
-  // TODO(jp6) readLink
-  let _ = atdir; // avoid unused warning
 
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_read_link {}", path.display());
-    let targetpath = tokio::fs::read_link(&path).await?;
-    let targetpath_str = targetpath.to_str().unwrap();
+    #[cfg(unix)]
+    {
+      // use nix::fcntl::{readlink, readlinkat};
+      use nix::fcntl::readlinkat;
+      let targetpath_str = match atdir {
+        Some(dir) => {
+          let fd = dir.as_raw_fd();
+          readlinkat(fd, &path)
+        }
+        None => {
+          let targetpath = std::fs::read_link(&path)?;
+          targetpath.to_str().unwrap()
+          // readlink(&path)
+        }
+      };
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let targetpath = std::fs::read_link(&path)?;
+      let targetpath_str = targetpath.to_str().unwrap();
+    }
     Ok(json!(targetpath_str))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
