@@ -91,7 +91,7 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fchdir", s.stateful_json_op(op_fchdir));
 }
 
-fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
+fn tokio_open_options(mode: Option<u32>, nofollow: bool) -> tokio::fs::OpenOptions {
   if let Some(mode) = mode {
     #[allow(unused_mut)]
     let mut std_options = std::fs::OpenOptions::new();
@@ -101,9 +101,15 @@ fn tokio_open_options(mode: Option<u32>) -> tokio::fs::OpenOptions {
     {
       use std::os::unix::fs::OpenOptionsExt;
       std_options.mode(mode & 0o777);
+      if nofollow {
+        std_options.custom_flags(libc::O_NOFOLLOW);
+      }
     }
     #[cfg(not(unix))]
-    let _ = mode; // avoid unused warning
+    {
+      let _ = mode; // avoid unused warning
+      let _ = nofollow;
+    }
     tokio::fs::OpenOptions::from(std_options)
   } else {
     tokio::fs::OpenOptions::new()
@@ -143,9 +149,7 @@ fn op_open(
   let nofollow = args.nofollow;
   let state_ = state.clone();
 
-  let _ = nofollow;
-
-  let mut open_options = tokio_open_options(args.mode);
+  let mut open_options = tokio_open_options(args.mode, nofollow);
   let mut create_new = false;
 
   if let Some(options) = args.options {
@@ -552,7 +556,7 @@ fn op_chmod(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_chmod {} {:o}", path.display(), mode);
+    debug!("op_chmod {} {:o} {}", path.display(), mode, nofollow);
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
@@ -607,8 +611,8 @@ fn op_chown(
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  let blockng = move || {
-    debug!("op_chown {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
+  let blocking = move || {
+    debug!("op_chown {} {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff), nofollow);
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
@@ -1042,7 +1046,7 @@ fn op_link(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_link {} {}", oldpath.display(), newpath.display());
+    debug!("op_link {} {} {}", oldpath.display(), newpath.display(), nofollow);
     tokio::fs::hard_link(&oldpath, &newpath).await?;
     Ok(json!({}))
   };
@@ -1143,6 +1147,7 @@ struct TruncateArgs {
   mode: Option<u32>,
   create: bool,
   create_new: bool,
+  nofollow: bool,
 }
 
 fn op_truncate(
@@ -1152,6 +1157,7 @@ fn op_truncate(
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   // require len to be 63 bit unsigned
   let len: u64 = args.len.try_into()?;
   let create = args.create;
@@ -1171,8 +1177,8 @@ fn op_truncate(
 
   let is_sync = args.promise_id.is_none();
   let fut = async move {
-    debug!("op_truncate {} {}", path.display(), len);
-    let mut open_options = tokio_open_options(args.mode);
+    debug!("op_truncate {} {} {}", path.display(), len, nofollow);
+    let mut open_options = tokio_open_options(args.mode, nofollow);
     open_options
       .create(create)
       .create_new(create_new)
@@ -1354,7 +1360,7 @@ fn op_utime(
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
-    debug!("op_utime {} {} {}", args.path, atime, mtime);
+    debug!("op_utime {} {} {} {}", args.path, atime, mtime, nofollow);
     set_file_times(args.path, atime, mtime)?;
     Ok(json!({}))
   };

@@ -26,6 +26,7 @@ interface TruncateArgs {
   mode?: number;
   path?: string;
   len?: number;
+  nofollow?: boolean;
 }
 
 export function truncateSync(
@@ -45,6 +46,7 @@ export function truncateSync(
     const args = checkOptions(options);
     args.path = path;
     args.len = coerceLen(len);
+    args.nofollow = false;
     sendSync("op_truncate", args);
   } else {
     // for the ftruncate variant, we ignore the create option
@@ -70,6 +72,7 @@ export async function truncate(
     const args = checkOptions(options);
     args.path = path;
     args.len = coerceLen(len);
+    args.nofollow = false;
     await sendAsync("op_truncate", args);
   } else {
     // for the ftruncate variant, we ignore the create option
