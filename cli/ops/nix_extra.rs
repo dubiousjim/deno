@@ -88,9 +88,9 @@ macro_rules! syscall {
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
 use std::{ptr, mem};
+#[allow(unused_imports)]
 use libc::{statx, stat64, c_int, off64_t};
 
-/*
 pub trait IsMinusOne {
     fn is_minus_one(&self) -> bool;
 }
@@ -103,8 +103,11 @@ macro_rules! impl_is_minus_one {
     })*)
 }
 
+/*
 impl_is_minus_one! { i8 i16 i32 i64 isize }
 */
+
+impl_is_minus_one! { i8 }
 
 pub fn cvt<T: std::sys::IsMinusOne>(t: T) -> std::io::Result<T> {
     if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
