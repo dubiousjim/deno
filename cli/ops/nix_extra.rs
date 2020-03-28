@@ -1,9 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // These are functions that should/will be in the nix crate, but aren't yet in nix 0.17
 
-#[macro_use]
-extern crate cfg_if;
-
 use nix::errno::Errno;
 use nix::fcntl::AtFlags;
 use nix::unistd::AccessFlags;
