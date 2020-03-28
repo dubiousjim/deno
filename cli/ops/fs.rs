@@ -635,8 +635,8 @@ fn op_chown(
     debug!(
       "op_chown {} {} {} {}",
       path.display(),
-      args.uid.unwrap_or(0xffffffff),
-      args.gid.unwrap_or(0xffffffff),
+      args.uid.unwrap_or(0xffff_ffff),
+      args.gid.unwrap_or(0xffff_ffff),
       nofollow
     );
     #[cfg(unix)]
@@ -2005,8 +2005,8 @@ fn op_fchown(
       debug!(
         "op_fchown {} {} {}",
         rid,
-        args.uid.unwrap_or(0xffffffff),
-        args.gid.unwrap_or(0xffffffff)
+        args.uid.unwrap_or(0xffff_ffff),
+        args.gid.unwrap_or(0xffff_ffff)
       );
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
