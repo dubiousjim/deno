@@ -45,7 +45,6 @@ pub fn faccessat<P: ?Sized + NixPath>(
 /// The owner/group for the provided path name will not be modified if `None` is
 /// provided for that argument.  Ownership change will be attempted for the fd
 /// only if `Some` owner/group is provided.
-#[allow(dead_code)]
 pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
   // let (uid, gid) = chown_raw_ids(owner, group);
 
@@ -85,7 +84,6 @@ macro_rules! syscall {
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
 use std::{ptr, mem};
-#[allow(unused_imports)]
 use libc::{statx, stat64, c_int, off64_t};
 
 trait IsMinusOne {
@@ -106,108 +104,134 @@ fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
     if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
 }
 
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-#[derive(Clone)]
-pub struct FileAttr {
-  stat: stat64,
-  statx_extra_fields: Option<StatxExtraFields>,
+// `statx` not exposed on musl and other libcs, see https://github.com/rust-lang/rust/pull/67774
+macro_rules! cfg_has_statx {
+    ({ $($then_tt:tt)* } else { $($else_tt:tt)* }) => {
+        cfg_if::cfg_if! {
+            if #[cfg(all(target_os = "linux", target_env = "gnu"))] {
+                $($then_tt)*
+            } else {
+                $($else_tt)*
+            }
+        }
+    };
+    ($($block_inner:tt)*) => {
+        #[cfg(all(target_os = "linux", target_env = "gnu"))]
+        {
+            $($block_inner)*
+        }
+    };
 }
 
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-#[derive(Clone)]
-struct StatxExtraFields {
-  // This is needed to check if btime is supported by the filesystem.
-  stx_mask: u32,
-  stx_btime: libc::statx_timestamp,
-}
-
-// We prefer `statx` on Linux if available, which contains file creation time.
-// Default `stat64` contains no creation time.
-#[allow(dead_code)]
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-unsafe fn try_statx(
-  fd: c_int,
-  path: *const libc::c_char,
-  flags: i32,
-  mask: u32,
-) -> Option<std::io::Result<FileAttr>> {
-  use std::sync::atomic::{AtomicU8, Ordering};
-
-  // Linux kernel prior to 4.11 or glibc prior to glibc 2.28 don't support `statx`
-  // We store the availability in global to avoid unnecessary syscalls.
-  // 0: Unknown
-  // 1: Not available
-  // 2: Available
-  static STATX_STATE: AtomicU8 = AtomicU8::new(0);
-  syscall! {
-      fn statx(
-          SYS_statx,
-          fd: c_int,
-          pathname: *const libc::c_char,
-          flags: c_int,
-          mask: libc::c_uint,
-          statxbuf: *mut libc::statx
-      ) -> c_int
+// #[cfg(all(target_os = "linux", target_env = "gnu"))]
+cfg_has_statx! {{
+  #[derive(Clone)]
+  pub struct FileAttr {
+    stat: stat64,
+    statx_extra_fields: Option<StatxExtraFields>,
   }
 
-  match STATX_STATE.load(Ordering::Relaxed) {
-    0 => {
-      // It is a trick to call `statx` with NULL pointers to check if the syscall
-      // is available. According to the manual, it is expected to fail with EFAULT.
-      // We do this mainly for performance, since it is nearly hundreds times
-      // faster than a normal successful call.
-      let err = cvt(statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut()))
-        .err()
-        .and_then(|e| e.raw_os_error());
-      // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
-      // and returns `EPERM`. Listing all possible errors seems not a good idea.
-      // See: https://github.com/rust-lang/rust/issues/65662
-      if err != Some(libc::EFAULT) {
-        STATX_STATE.store(1, Ordering::Relaxed);
-        return None;
-      }
-      STATX_STATE.store(2, Ordering::Relaxed);
+  #[derive(Clone)]
+  struct StatxExtraFields {
+    // This is needed to check if btime is supported by the filesystem.
+    stx_mask: u32,
+    stx_btime: libc::statx_timestamp,
+  }
+
+  // We prefer `statx` on Linux if available, which contains file creation time.
+  // Default `stat64` contains no creation time.
+  #[allow(dead_code)]
+  unsafe fn try_statx(
+    fd: c_int,
+    path: *const libc::c_char,
+    flags: i32,
+    mask: u32,
+  ) -> Option<std::io::Result<FileAttr>> {
+    use std::sync::atomic::{AtomicU8, Ordering};
+
+    // Linux kernel prior to 4.11 or glibc prior to glibc 2.28 don't support `statx`
+    // We store the availability in global to avoid unnecessary syscalls.
+    // 0: Unknown
+    // 1: Not available
+    // 2: Available
+    static STATX_STATE: AtomicU8 = AtomicU8::new(0);
+    syscall! {
+        fn statx(
+            SYS_statx,
+            fd: c_int,
+            pathname: *const libc::c_char,
+            flags: c_int,
+            mask: libc::c_uint,
+            statxbuf: *mut libc::statx
+        ) -> c_int
     }
-    1 => return None,
-    _ => {}
+
+    match STATX_STATE.load(Ordering::Relaxed) {
+      0 => {
+        // It is a trick to call `statx` with NULL pointers to check if the syscall
+        // is available. According to the manual, it is expected to fail with EFAULT.
+        // We do this mainly for performance, since it is nearly hundreds times
+        // faster than a normal successful call.
+        let err = cvt(statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut()))
+          .err()
+          .and_then(|e| e.raw_os_error());
+        // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
+        // and returns `EPERM`. Listing all possible errors seems not a good idea.
+        // See: https://github.com/rust-lang/rust/issues/65662
+        if err != Some(libc::EFAULT) {
+          STATX_STATE.store(1, Ordering::Relaxed);
+          return None;
+        }
+        STATX_STATE.store(2, Ordering::Relaxed);
+      }
+      1 => return None,
+      _ => {}
+    }
+
+    let mut buf: libc::statx = mem::zeroed();
+    if let Err(err) = cvt(statx(fd, path, flags, mask, &mut buf)) {
+      return Some(Err(err));
+    }
+
+    // We cannot fill `stat64` exhaustively because of private padding fields.
+    let mut stat: stat64 = mem::zeroed();
+    // `c_ulong` on gnu-mips, `dev_t` otherwise
+    stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as _;
+    stat.st_ino = buf.stx_ino as libc::ino64_t;
+    stat.st_nlink = buf.stx_nlink as libc::nlink_t;
+    stat.st_mode = buf.stx_mode as libc::mode_t;
+    stat.st_uid = buf.stx_uid as libc::uid_t;
+    stat.st_gid = buf.stx_gid as libc::gid_t;
+    stat.st_rdev = libc::makedev(buf.stx_rdev_major, buf.stx_rdev_minor) as _;
+    stat.st_size = buf.stx_size as off64_t;
+    stat.st_blksize = buf.stx_blksize as libc::blksize_t;
+    stat.st_blocks = buf.stx_blocks as libc::blkcnt64_t;
+    stat.st_atime = buf.stx_atime.tv_sec as libc::time_t;
+    // `i64` on gnu-x86_64-x32, `c_ulong` otherwise.
+    stat.st_atime_nsec = buf.stx_atime.tv_nsec as _;
+    stat.st_mtime = buf.stx_mtime.tv_sec as libc::time_t;
+    stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as _;
+    stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
+    stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as _;
+
+    let extra = StatxExtraFields {
+      stx_mask: buf.stx_mask,
+      stx_btime: buf.stx_btime,
+    };
+
+    Some(Ok(FileAttr {
+      stat,
+      statx_extra_fields: Some(extra),
+    }))
   }
 
-  let mut buf: libc::statx = mem::zeroed();
-  if let Err(err) = cvt(statx(fd, path, flags, mask, &mut buf)) {
-    return Some(Err(err));
+} else {
+  #[derive(Clone)]
+  pub struct FileAttr {
+    stat: stat64,
   }
+}}
 
-  // We cannot fill `stat64` exhaustively because of private padding fields.
-  let mut stat: stat64 = mem::zeroed();
-  // `c_ulong` on gnu-mips, `dev_t` otherwise
-  stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as _;
-  stat.st_ino = buf.stx_ino as libc::ino64_t;
-  stat.st_nlink = buf.stx_nlink as libc::nlink_t;
-  stat.st_mode = buf.stx_mode as libc::mode_t;
-  stat.st_uid = buf.stx_uid as libc::uid_t;
-  stat.st_gid = buf.stx_gid as libc::gid_t;
-  stat.st_rdev = libc::makedev(buf.stx_rdev_major, buf.stx_rdev_minor) as _;
-  stat.st_size = buf.stx_size as off64_t;
-  stat.st_blksize = buf.stx_blksize as libc::blksize_t;
-  stat.st_blocks = buf.stx_blocks as libc::blkcnt64_t;
-  stat.st_atime = buf.stx_atime.tv_sec as libc::time_t;
-  // `i64` on gnu-x86_64-x32, `c_ulong` otherwise.
-  stat.st_atime_nsec = buf.stx_atime.tv_nsec as _;
-  stat.st_mtime = buf.stx_mtime.tv_sec as libc::time_t;
-  stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as _;
-  stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
-  stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as _;
-
-  let extra = StatxExtraFields {
-    stx_mask: buf.stx_mask,
-    stx_btime: buf.stx_btime,
-  };
-
-  Some(Ok(FileAttr {
-    stat,
-    statx_extra_fields: Some(extra),
-  }))
-}
 
 /*
     pub fn created(&self) -> io::Result<SystemTime> {
@@ -266,7 +290,6 @@ unsafe fn try_statx(
         Ok(FileAttr::from_stat64(stat))
     }
 
-
 pub fn stat(p: &Path) -> io::Result<FileAttr> {
     let p = cstr(p)?;
 
@@ -298,23 +321,39 @@ pub fn lstat(p: &Path) -> io::Result<FileAttr> {
         ) } {
             return ret;
         }
-    }
-
-    let mut stat: stat64 = unsafe { mem::zeroed() };
-    cvt(unsafe { lstat64(p.as_ptr(), &mut stat) })?;
-    Ok(FileAttr::from_stat64(stat))
-}
-
-
-
-/// Not exposed on musl and other libcs, see https://github.com/rust-lang/rust/pull/67774
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-#[allow(dead_code)]
-pub fn my_statx<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, flag: AtFlags) -> Result<()> {
-  Ok(())
-}
 
 */
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[allow(dead_code)]
+// pub fn my_fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<FileAttr> {
+pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<FileAttr> {
+  let p = cstr(p)?;
+  let flag = if nofollow {
+    libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
+  } else {
+    libc::AT_STATX_SYNC_AS_STAT,
+  }
+  cfg_has_statx! {
+    if let Some(ret) = unsafe { try_statx(
+      dirfd.upwrap_or(libc::AT_FDCWD),
+      p.as_ptr(),
+      libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
+      libc::STATX_ALL,
+    ) } {
+      return ret;
+    }
+  }
+
+  let _ = dirfd; // FIXME
+  let mut stat: stat64 = unsafe { mem::zeroed() };
+  if nofollow {
+    cvt(unsafe { lstat64(p.as_ptr(), &mut stat) })?;
+  } else {
+    cvt(unsafe { stat64(p.as_ptr(), &mut stat) })?;
+  }
+  Ok(FileAttr::from_stat64(stat))
+}
 
 #[cfg(test)]
 mod tests {
