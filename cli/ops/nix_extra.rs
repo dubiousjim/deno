@@ -357,7 +357,7 @@ pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io:
   }
 
   let mut stat: stat64 = unsafe { mem::zeroed() };
-  cvt(unsafe { fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
+  cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
   Ok(FileAttr::from_stat64(stat))
 }
 
