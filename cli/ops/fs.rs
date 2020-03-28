@@ -363,7 +363,9 @@ fn op_sync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("sync {}", rid);
-  futures::executor::block_on(async move { file.sync_all().await })?;
+  // FIXME(jp1)
+  // futures::executor::block_on(async move { file.sync_all().await })?;
+  futures::executor::block_on(file.sync_all())?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -388,7 +390,9 @@ fn op_datasync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("datasync {}", rid);
-  futures::executor::block_on(async move { file.sync_all().await })?;
+  // FIXME(jp1)
+  // futures::executor::block_on(async move { file.sync_data().await })?;
+  futures::executor::block_on(file.sync_data())?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -589,8 +593,8 @@ fn op_chown(
 
   state.check_write(&path)?;
 
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_chown {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
     #[cfg(unix)]
@@ -1246,8 +1250,8 @@ fn op_make_temp_dir(
 
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
+  // FIXME(jp2)
   let is_sync = args.promise_id.is_none();
-  // FIXME
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1278,8 +1282,8 @@ fn op_make_temp_file(
 
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
+  // FIXME(jp2)
   let is_sync = args.promise_id.is_none();
-  // FIXME
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1319,41 +1323,21 @@ fn op_utime(
 
   state.check_write(&path)?;
 
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  // FIXME
-
-  /*
-  blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.path, atime, mtime);
-    set_file_times(args.path, atime, mtime)?;
-    Ok(json!({}))
-  })
-  */
-
   let blocking = move || {
     debug!("op_utime {} {} {}", args.path, atime, mtime);
     set_file_times(args.path, atime, mtime)?;
     Ok(json!({}))
   };
   if is_sync {
-    Ok(JsonOp::Sync(blocking()?))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
     let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 
-  /*
-  let fut = async move {
-    ...
-    Ok(json!({}))
-  };
-  if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
-  } else {
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
-  */
 }
 
 fn op_cwd(
@@ -1514,8 +1498,8 @@ fn op_futime(
   };
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  // FIXME
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
@@ -1646,7 +1630,7 @@ fn op_fchown(
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?; // FIXME
+    let buf = futures::executor::block_on(fut)?; // FIXME(jp3)
     Ok(JsonOp::Sync(buf))
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
@@ -1691,3 +1675,37 @@ fn op_fchdir(
   }
   Ok(JsonOp::Sync(json!({})))
 }
+
+  /*
+  blocking_json(is_sync, move || {
+    ...
+    Ok(json!({}))
+  })
+  */
+
+  /*
+  let blocking = move || {
+    ...
+    Ok(json!({}))
+  };
+  if is_sync {
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
+  } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+  */
+
+  /*
+  let fut = async move {
+    ...
+    Ok(json!({}))
+  };
+  if is_sync {
+    let buf = futures::executor::block_on(fut)?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+  */
