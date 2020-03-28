@@ -899,7 +899,7 @@ fn op_stat(
       let filestat: FileStat = match atdir {
         Some(dir) => {
           let flag = if nofollow { AtFlags::AT_SYMLINK_NOFOLLOW } else { AtFlags::AT_SYMLINK_FOLLOW };
-          fstatat(dir.as_raw_fd(), &path, &flag)?
+          fstatat(dir.as_raw_fd(), &path, flag)?
         }
         None if nofollow => lstat(&path)?,
         None => stat(&path)?,
