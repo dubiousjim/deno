@@ -903,7 +903,7 @@ fn op_stat(
         }
         None if nofollow => lstat(&path)?,
         None => stat(&path)?,
-      }
+      };
       let sflag = SFlag::from_bits_truncate(filestat.st_mode);
       // see https://unix.stackexchange.com/questions/91197
       // not available on Linux, and their
