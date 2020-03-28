@@ -143,6 +143,8 @@ fn op_open(
   let nofollow = args.nofollow;
   let state_ = state.clone();
 
+  let _ = nofollow;
+
   let mut open_options = tokio_open_options(args.mode);
   let mut create_new = false;
 
@@ -544,6 +546,8 @@ fn op_chmod(
   let nofollow = args.nofollow;
   let mode = args.mode & 0o777;
 
+  let _ = nofollow;
+
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
@@ -596,6 +600,8 @@ fn op_chown(
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let nofollow = args.nofollow;
+
+  let _ = nofollow;
 
   state.check_write(&path)?;
 
@@ -1029,6 +1035,8 @@ fn op_link(
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
   let nofollow = args.nofollow;
 
+  let _ = nofollow;
+
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
 
@@ -1338,6 +1346,8 @@ fn op_utime(
   // require times to be 63 bit unsigned
   let atime: u64 = args.atime.try_into()?;
   let mtime: u64 = args.mtime.try_into()?;
+
+  let _ = nofollow;
 
   state.check_write(&path)?;
 
