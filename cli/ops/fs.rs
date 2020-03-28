@@ -595,7 +595,7 @@ fn op_chown(
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let blockng = move || {
     debug!("op_chown {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
     #[cfg(unix)]
     {
@@ -612,7 +612,15 @@ fn op_chown(
       let _metadata = std::fs::metadata(&path)?;
       return Err(OpError::not_implemented());
     }
-  })
+  };
+
+  if is_sync {
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
+  } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -1330,6 +1338,7 @@ fn op_utime(
     set_file_times(args.path, atime, mtime)?;
     Ok(json!({}))
   };
+
   if is_sync {
     let res = blocking()?;
     Ok(JsonOp::Sync(res))
@@ -1500,7 +1509,7 @@ fn op_futime(
 
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  let blocking = move || {
     #[cfg(unix)]
     {
       use nix::sys::stat::futimens;
@@ -1518,7 +1527,15 @@ fn op_futime(
       let _ = mtime;
     }
     Ok(json!({}))
-  })
+  };
+
+  if is_sync {
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
+  } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
 }
 
 #[derive(Deserialize)]
@@ -1608,8 +1625,9 @@ fn op_fchown(
   };
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move {
     #[cfg(unix)]
     {
       use nix::unistd::{Gid, Uid};
@@ -1630,9 +1648,10 @@ fn op_fchown(
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?; // FIXME(jp3)
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
