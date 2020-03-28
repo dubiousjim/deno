@@ -1287,33 +1287,27 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_read_link {}", path.display());
-    let targetstr: String;
+    let ostarget: std::ffi::OsString;
     #[cfg(unix)]
     {
-      // use nix::fcntl::{readlink, readlinkat};
-      use nix::fcntl::readlinkat;
-      let target: std::ffi::OsString = match atdir {
+      use nix::fcntl::{readlink, readlinkat};
+      ostarget = match atdir {
         Some(dir) => {
           let fd = dir.as_raw_fd();
           readlinkat(fd, &path)?
         }
         None => {
-          std::fs::read_link(&path)?.into_os_string()
-          /*
-          let targetpath = std::fs::read_link(&path)?;
-          targetstr = targetpath.to_str().unwrap();
-          // readlink(&path)
-          */
+          // std::fs::read_link(&path)?.into_os_string()
+          readlink(&path)?
         }
       };
-      targetstr = target.into_string()?;
     }
     #[cfg(not(unix))]
     {
       let _ = atdir; // avoid unused warning
-      let targetpath = std::fs::read_link(&path)?;
-      targetstr = targetpath.to_str().unwrap();
+      ostarget = std::fs::read_link(&path)?.into_os_string();
     }
+    let targetstr = ostarget.into_string()?;
     Ok(json!(targetstr.as_str()))
   };
 
