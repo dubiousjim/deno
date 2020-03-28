@@ -363,8 +363,7 @@ fn op_sync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("sync {}", rid);
-  // futures::executor::block_on(file.sync_all())?; // FIXME
-  file.sync_all();
+  futures::executor::block_on(async move { file.sync_all().await })?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -389,8 +388,7 @@ fn op_datasync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("datasync {}", rid);
-  // futures::executor::block_on(file.sync_data())?; // FIXME
-  file.sync_data();
+  futures::executor::block_on(async move { file.sync_all().await })?;
   Ok(JsonOp::Sync(json!({})))
 }
 
