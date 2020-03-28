@@ -1287,6 +1287,7 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_read_link {}", path.display());
+    let targetpath_str: &str;
     #[cfg(unix)]
     {
       // use nix::fcntl::{readlink, readlinkat};
@@ -1301,13 +1302,13 @@ fn op_read_link(
           // readlink(&path)
         }
       };
-      let targetpath_str = targetpath.to_str().unwrap();
+      targetpath_str = targetpath.to_str().unwrap();
     }
     #[cfg(not(unix))]
     {
       let _ = atdir; // avoid unused warning
       let targetpath = std::fs::read_link(&path)?;
-      let targetpath_str = targetpath.to_str().unwrap();
+      targetpath_str = targetpath.to_str().unwrap();
     }
     Ok(json!(targetpath_str))
   };
