@@ -1051,24 +1051,32 @@ fn op_link(
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
 
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_link {} {} {}", oldpath.display(), newpath.display(), nofollow);
-    if cfg!(unix) && nofollow {
-      #[cfg(unix)]
-      {
-        // TODO(jp4)
-      }
-    } else {
-      tokio::fs::hard_link(&oldpath, &newpath).await?;
+    /*
+        // futures::executor (async move) version
+        tokio::fs::hard_link(&oldpath, &newpath).await?;
+     */
+    #[cfg(unix)]
+    {
+      use nix::unistd::{linkat, LinkatFlags};
+      let flag = if nofollow { LinkatFlags::NoFollowSymlink } else { LinkatFlags::FollowSymlink };
+      linkat(None, &oldpath, None, &newpath, flag)?;
+    }
+    #[cfg(not(unix))]
+    {
+      std::fs::hard_link(&oldpath, &newpath)?;
     }
     Ok(json!({}))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut = async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
