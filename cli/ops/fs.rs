@@ -559,7 +559,7 @@ fn op_chmod(
        tokio::fs::set_permissions(&path, permissions).await?;
       */
       use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
-      #[cfg(target_os="mac")]
+      #[cfg(target_os = "mac")]
       let mode = mode.try_into()?;
       let nix_mode = Mode::from_bits_truncate(mode);
       let flag = if nofollow {
