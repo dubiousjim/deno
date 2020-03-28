@@ -24,40 +24,6 @@ use std::os::unix::io::{AsRawFd, RawFd};
 #[allow(unused_imports)]
 use super::nix_extra::faccessat;
 
-#[cfg(unix)]
-fn my_check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
-  use nix::fcntl::{fcntl, FcntlArg, OFlag};
-  let fd = file.as_raw_fd();
-  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-  let flags = OFlag::from_bits_truncate(flags);
-  let mode = OFlag::O_ACCMODE & flags;
-  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
-    Ok(fd)
-  } else {
-    let e = OpError::permission_denied(
-      "run again with the --allow-write flag".to_string(),
-    );
-    Err(e)
-  }
-}
-
-#[cfg(unix)]
-fn my_check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
-  use nix::fcntl::{fcntl, FcntlArg, OFlag};
-  let fd = file.as_raw_fd();
-  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-  let flags = OFlag::from_bits_truncate(flags);
-  let mode = OFlag::O_ACCMODE & flags;
-  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
-    Ok(fd)
-  } else {
-    let e = OpError::permission_denied(
-      "run again with the --allow-read flag".to_string(),
-    );
-    Err(e)
-  }
-}
-
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -124,6 +90,7 @@ struct OpenArgs {
   open_mode: Option<String>,
   mode: Option<u32>,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -538,6 +505,7 @@ struct ChmodArgs {
   path: String,
   mode: u32,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -602,6 +570,7 @@ struct ChownArgs {
   uid: Option<u32>,
   gid: Option<u32>,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -849,6 +818,7 @@ struct StatArgs {
   promise_id: Option<u64>,
   path: String,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -969,6 +939,7 @@ struct RenameArgs {
   oldpath: String,
   newpath: String,
   create_new: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1037,6 +1008,7 @@ struct LinkArgs {
   oldpath: String,
   newpath: String,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1090,6 +1062,7 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1136,6 +1109,7 @@ fn op_symlink(
 struct ReadLinkArgs {
   promise_id: Option<u64>,
   path: String,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1175,6 +1149,7 @@ struct TruncateArgs {
   create: bool,
   create_new: bool,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1367,6 +1342,7 @@ struct UtimeArgs {
   atime: i64,
   mtime: i64,
   nofollow: bool,
+  #[allow(unused)]
   atrid: Option<i32>,
 }
 
@@ -1425,6 +1401,40 @@ fn op_cwd(
   Ok(JsonOp::Sync(json!(path_str)))
 }
 
+#[cfg(unix)]
+fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-write flag".to_string(),
+    );
+    Err(e)
+  }
+}
+
+#[cfg(unix)]
+fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-read flag".to_string(),
+    );
+    Err(e)
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FTruncateArgs {
@@ -1460,7 +1470,7 @@ fn op_ftruncate(
     // Unix returns InvalidInput if fd was not opened for writing
     // For consistency with Windows, we check explicitly
     #[cfg(unix)]
-    my_check_open_for_writing(&file)?;
+    check_open_for_writing(&file)?;
     debug!("op_ftruncate {} {}", rid, len);
     file.set_len(len).await?;
     Ok(json!({}))
@@ -1512,7 +1522,7 @@ fn op_fchmod(
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
-      my_check_open_for_writing(&file)?;
+      check_open_for_writing(&file)?;
       debug!("op_fchmod {} {:o}", rid, mode);
       /*
       let metadata = file.metadata().await?;
@@ -1580,7 +1590,7 @@ fn op_futime(
     {
       use nix::sys::stat::futimens;
       use nix::sys::time::{TimeSpec, TimeValLike};
-      let fd = my_check_open_for_writing(&file)?;
+      let fd = check_open_for_writing(&file)?;
       debug!("op_futime {} {} {}", rid, atime, mtime);
       let atime = TimeSpec::seconds(atime as i64);
       let mtime = TimeSpec::seconds(mtime as i64);
@@ -1639,7 +1649,7 @@ fn op_fstat(
   let fut = async move {
     #[cfg(unix)]
     {
-      my_check_open_for_reading(&file)?;
+      check_open_for_reading(&file)?;
       debug!("op_fstat {}", rid);
       let metadata = file.metadata().await?;
       get_stat_json(metadata, None)
@@ -1698,7 +1708,7 @@ fn op_fchown(
     {
       use nix::unistd::{Gid, Uid};
       use super::nix_extra::fchown;
-      let fd = my_check_open_for_writing(&file)?;
+      let fd = check_open_for_writing(&file)?;
       debug!("op_fchown {} {} {}", rid, args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
