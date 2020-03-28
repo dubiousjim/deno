@@ -124,6 +124,7 @@ struct OpenArgs {
   open_mode: Option<String>,
   mode: Option<u32>,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -537,6 +538,7 @@ struct ChmodArgs {
   path: String,
   mode: u32,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_chmod(
@@ -548,7 +550,6 @@ fn op_chmod(
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let nofollow = args.nofollow;
   let mode = args.mode & 0o777;
-
 
   state.check_write(&path)?;
 
@@ -601,6 +602,7 @@ struct ChownArgs {
   uid: Option<u32>,
   gid: Option<u32>,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_chown(
@@ -847,6 +849,7 @@ struct StatArgs {
   promise_id: Option<u64>,
   path: String,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_stat(
@@ -966,6 +969,7 @@ struct RenameArgs {
   oldpath: String,
   newpath: String,
   create_new: bool,
+  atrid: Option<i32>,
 }
 
 fn op_rename(
@@ -1033,6 +1037,7 @@ struct LinkArgs {
   oldpath: String,
   newpath: String,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_link(
@@ -1085,6 +1090,7 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  atrid: Option<i32>,
 }
 
 fn op_symlink(
@@ -1130,6 +1136,7 @@ fn op_symlink(
 struct ReadLinkArgs {
   promise_id: Option<u64>,
   path: String,
+  atrid: Option<i32>,
 }
 
 fn op_read_link(
@@ -1168,6 +1175,7 @@ struct TruncateArgs {
   create: bool,
   create_new: bool,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_truncate(
@@ -1359,6 +1367,7 @@ struct UtimeArgs {
   atime: i64,
   mtime: i64,
   nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_utime(

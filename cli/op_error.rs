@@ -327,7 +327,10 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
-      nix::Error::Sys(_) => unreachable!(),
+      nix::Error::Sys(code) => {
+        dbg!("unexpected nix::Error::Sys({})", code);
+        ErrorKind::Other
+      }
       nix::Error::InvalidPath => ErrorKind::TypeError,
       nix::Error::InvalidUtf8 => ErrorKind::InvalidData,
       nix::Error::UnsupportedOperation => unreachable!(),
