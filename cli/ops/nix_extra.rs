@@ -72,6 +72,8 @@ use std::{ptr, mem};
 #[allow(unused_imports)]
 use libc::{statx, stat64, c_int, off64_t};
 
+use std::os::unix::ffi::OsStrExt;
+
 #[allow(dead_code)]
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
