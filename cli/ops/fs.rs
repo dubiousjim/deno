@@ -363,7 +363,8 @@ fn op_sync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("sync {}", rid);
-  futures::executor::block_on(file.sync_all())?;
+  // futures::executor::block_on(file.sync_all())?; // FIXME
+  file.sync_all();
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -388,7 +389,8 @@ fn op_datasync(
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
   debug!("datasync {}", rid);
-  futures::executor::block_on(file.sync_data())?;
+  // futures::executor::block_on(file.sync_data())?; // FIXME
+  file.sync_data();
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -590,6 +592,7 @@ fn op_chown(
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     debug!("op_chown {} {} {}", path.display(), args.uid.unwrap_or(0xffffffff), args.gid.unwrap_or(0xffffffff));
     #[cfg(unix)]
@@ -1246,6 +1249,7 @@ fn op_make_temp_dir(
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1277,6 +1281,7 @@ fn op_make_temp_file(
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
@@ -1512,6 +1517,7 @@ fn op_futime(
   let file = futures::executor::block_on(tokio_file.try_clone())?;
 
   let is_sync = args.promise_id.is_none();
+  // FIXME
   blocking_json(is_sync, move || {
     #[cfg(unix)]
     {
@@ -1642,7 +1648,7 @@ fn op_fchown(
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
+    let buf = futures::executor::block_on(fut)?; // FIXME
     Ok(JsonOp::Sync(buf))
   } else {
     Ok(JsonOp::Async(fut.boxed_local()))
