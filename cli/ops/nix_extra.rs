@@ -84,6 +84,7 @@ macro_rules! syscall {
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
 use std::{ptr, mem};
+#[allow(unused_imports)]
 use libc::{statx, stat64, c_int, off64_t};
 
 trait IsMinusOne {
