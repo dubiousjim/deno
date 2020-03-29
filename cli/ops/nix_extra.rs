@@ -314,17 +314,15 @@ cfg_has_statx! {{
 
 
 
-
-
-
+/*
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
-
+*/
 
 #[allow(dead_code)]
-// pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<ExtraStat> {
-pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<ExtraStat> {
+pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) ->Result<ExtraStat> {
+// pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<ExtraStat> {
 /*
     let res = path.with_nix_path(|cstr| {
       unsafe {
@@ -334,9 +332,9 @@ pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<Extr
     Errno::result(res).map(drop)
 */
 
-  // let res = path.with_nix_path(|cstr| {
+  // <P: NixPath>.with_nix_path(F: &CStr -> T) -> Result<T>
+  let p = path.with_nix_path(|cstr| cstr; })?;
 
-  let p = cstr(path).unwrap();
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
   } else {
