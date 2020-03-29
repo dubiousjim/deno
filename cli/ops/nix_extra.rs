@@ -220,7 +220,6 @@ cfg_has_statx! {{
       return Some(Err(err));
     }
 
-    // TODO(jp)
     // We cannot fill `stat64` exhaustively because of private padding fields.
     let mut stat: libc::stat64 = mem::zeroed();
     stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as dev_t;
@@ -239,32 +238,28 @@ cfg_has_statx! {{
     stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as ntime_t;
     stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
     stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as ntime_t;
-    Some(Ok(ExtraStat { stat, st_btime = buf.stx_btime.tv_sec as libc::time_t, st_btime_nsec = buf.stx_btime.tv_nsec as ntime_t }))
+    Some(Ok(ExtraStat { stat, st_btime: buf.stx_btime.tv_sec as libc::time_t, st_btime_nsec: buf.stx_btime.tv_nsec as ntime_t }))
   }
 
   impl ExtraStat {
     fn from_stat64(stat: libc::stat64) -> Self {
-      Self { stat, st_btime = 0, st_btime_nsec = 0 }
+      Self { stat, st_btime: 0, st_btime_nsec: 0 }
     }
   }
 
 } else {
-  #[cfg(target_os = "netbsd")]
   impl ExtraStat {
+    #[cfg(target_os = "netbsd")]
     fn from_stat64(stat: libc::stat64) -> Self {
-      Self { stat, st_btime = stat.st_birthtime, st_btime_nsec = stat.st_birthtimensec }
+      Self { stat, st_btime: stat.st_birthtime, st_btime_nsec: stat.st_birthtimensec }
     }
-  }
-  #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "macos"))]
-  impl ExtraStat {
+    #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "macos"))]
     fn from_stat64(stat: libc::stat64) -> Self {
-      Self { stat, st_btime = stat.st_birthtime, st_btime_nsec = stat.st_birthtime_nsec }
+      Self { stat, st_btime: stat.st_birthtime, st_btime_nsec: stat.st_birthtime_nsec }
     }
-  }
-  #[cfg(not(any(target_os = "netbsd", target_os = "freebsd", target_os = "openbsd", target_os = "macos")))]
-  impl ExtraStat {
+    #[cfg(not(any(target_os = "netbsd", target_os = "freebsd", target_os = "openbsd", target_os = "macos")))]
     fn from_stat64(stat: libc::stat64) -> Self {
-      Self { stat, st_btime = 0, st_btime_nsec = 0 }
+      Self { stat, st_btime: 0, st_btime_nsec: 0 }
     }
   }
 }}
@@ -293,7 +288,7 @@ pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bo
 
   let mut stat: libc::stat64 = unsafe { mem::zeroed() };
   cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
-  Ok(ExtraAttr::from_stat64(stat))
+  Ok(ExtraStat::from_stat64(stat))
 }
 
 #[allow(dead_code)]
@@ -313,7 +308,7 @@ pub fn fstat(fd: RawFd) -> std::io::Result<ExtraStat> {
 
   let mut stat: libc::stat64 = unsafe { mem::zeroed() };
   cvt(unsafe { libc::fstat64(fd, &mut stat) })?;
-  Ok(ExtraAttr::from_stat64(stat))
+  Ok(ExtraStat::from_stat64(stat))
 }
 
 
