@@ -3,11 +3,11 @@
 
 use nix::errno::Errno;
 use nix::fcntl::AtFlags;
-use nix::unistd::{Gid, Uid, AccessFlags};
+use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
-use std::os::unix::io::RawFd;
 use std::ffi::CString;
-use std::mem
+use std::mem;
+use std::os::unix::io::RawFd;
 #[allow(unused_imports)]
 use std::ptr;
 
@@ -19,11 +19,14 @@ use libc::dev_t;
 type ntime_t = i64;
 
 #[cfg(any(target_os = "linux", target_os = "emscripten"))]
-use libc::{fstatat64, fstat64, stat64};
+use libc::{fstat64, fstatat64, stat64};
 
-#[cfg(not(any(target_os = "linux", target_os = "emscripten", target_os = "l4re")))]
-use libc::{fstatat as fstatat64, fstat as fstat64, stat as stat64};
-
+#[cfg(not(any(
+  target_os = "linux",
+  target_os = "emscripten",
+  target_os = "l4re"
+)))]
+use libc::{fstat as fstat64, fstatat as fstatat64, stat as stat64};
 
 /*
 #[cfg(target_os = "l4re")]
@@ -44,8 +47,6 @@ use libc::{
 #[cfg(not(any(target_os = "linux", target_os = "emscripten", target_os = "l4re", target_os = "solaris", target_os = "fuchsia", target_os = "redox")))]
 use libc::readdir_r as readdir64_r;
 */
-
-
 
 /// Based on https://github.com/nix-rust/nix/pull/1134
 ///
@@ -333,30 +334,32 @@ pub fn fstatat<P: ?Sized + NixPath>(
   path: &P,
   nofollow: bool,
 ) -> Result<ExtraStat> {
-  path.with_nix_path(|cstr| {
-    let flag = if nofollow {
-      libc::AT_SYMLINK_NOFOLLOW
-    } else {
-      0
-    };
-    let fd = dirfd.unwrap_or(libc::AT_FDCWD);
+  path
+    .with_nix_path(|cstr| {
+      let flag = if nofollow {
+        libc::AT_SYMLINK_NOFOLLOW
+      } else {
+        0
+      };
+      let fd = dirfd.unwrap_or(libc::AT_FDCWD);
 
-    cfg_has_statx! {
-      if let Some(ret) = unsafe { try_statx(
-        fd,
-        cstr.as_ptr(),
-        flag | libc::AT_STATX_SYNC_AS_STAT,
-        libc::STATX_ALL,
-      ) } {
-        return ret;
+      cfg_has_statx! {
+        if let Some(ret) = unsafe { try_statx(
+          fd,
+          cstr.as_ptr(),
+          flag | libc::AT_STATX_SYNC_AS_STAT,
+          libc::STATX_ALL,
+        ) } {
+          return ret;
+        }
       }
-    }
 
-    let mut stat: stat64 = unsafe { mem::zeroed() };
-    let res = unsafe { fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
-    Errno::result(res)?;
-    Ok(ExtraStat::from_stat64(stat))
-  }).and_then(|ok| ok)
+      let mut stat: stat64 = unsafe { mem::zeroed() };
+      let res = unsafe { fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
+      Errno::result(res)?;
+      Ok(ExtraStat::from_stat64(stat))
+    })
+    .and_then(|ok| ok)
 }
 
 #[allow(dead_code)]
@@ -379,9 +382,6 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   Errno::result(res)?;
   Ok(ExtraStat::from_stat64(stat))
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
