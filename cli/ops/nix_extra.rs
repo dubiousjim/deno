@@ -5,6 +5,7 @@ use nix::errno::Errno;
 use nix::fcntl::AtFlags;
 use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
+#[allow(unused_imports)]
 use std::ffi::CString;
 use std::mem;
 use std::os::unix::io::RawFd;
