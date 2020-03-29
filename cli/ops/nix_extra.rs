@@ -65,6 +65,7 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 #[allow(unused_imports)]
 use std::path::Path;
 use std::ffi::CString;
+use std::ffi::CStr;
 #[allow(unused_imports)]
 use std::os::unix::ffi::OsStrExt;
 #[allow(unused_imports)]
@@ -328,7 +329,7 @@ fn result_nix_path<P: NixPath, T, F>(_p: P, _f: F) -> Result<T>
 #[allow(dead_code)]
 pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) ->Result<ExtraStat> {
 // pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<ExtraStat> {
-  result_nix_path(p, |cstr| {
+  result_nix_path(path, |cstr| {
     let flag = if nofollow {
       libc::AT_SYMLINK_NOFOLLOW
     } else {
