@@ -67,21 +67,20 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 
 use std::path::Path;
 use std::ffi::CString;
-#[allow(unused_imports)]
-use std::{ptr, mem};
-#[allow(unused_imports)]
-use libc::{statx, stat64, c_int, off64_t};
-
 use std::os::unix::ffi::OsStrExt;
+#[allow(unused_imports)]
+use std::ptr;
+use std::mem;
+use libc::c_int;
 
-#[allow(dead_code)]
+// #[allow(dead_code)]
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
 #[cfg(target_os = "linux")]
-#[allow(unused_imports)]
+// #[allow(unused_imports)]
 macro_rules! syscall {
     (fn $name:ident($sysname:ident, $($arg_name:ident: $t:ty),*) -> $ret:ty) => (
         unsafe fn $name($($arg_name:$t),*) -> $ret {
@@ -135,11 +134,45 @@ macro_rules! cfg_has_statx {
     };
 }
 
+
+// `c_ulong` on gnu-mips, `dev_t` otherwise
+use libc::dev_t;
+
+// `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
+type ntime_t = i64;
+
+#[allow(unused)]
+#[derive(Clone)]
+pub struct ExtraStat {
+/*
+  st_dev: dev_t,
+  st_ino: libc::ino64_t,
+  st_nlink: libc::nlink_t,
+  st_mode: libc::mode_t,
+  st_uid: libc::uid_t,
+  st_gid: libc::gid_t,
+  st_rdev: dev_t,
+  st_size: libc::off64_t,
+  st_blksize: libc::blksize_t,
+  st_blocks: libc::blkcnt64_t,
+  st_atime: libc::time_t,
+  st_atime_nsec: ntime_t,
+  st_mtime: libc::time_t,
+  st_mtime_nsec: ntime_t,
+  st_ctime: libc::time_t,
+  st_ctime_nsec: ntime_t,
+*/
+  stat: libc::stat64; // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
+  st_btime: libc::time_t,
+  st_btime_nsec: ntime_t,
+}
+
 // #[cfg(all(target_os = "linux", target_env = "gnu"))]
 cfg_has_statx! {{
+  /*
   #[derive(Clone)]
   pub struct FileAttr {
-    stat: stat64,
+    stat: libc::stat64,
     statx_extra_fields: Option<StatxExtraFields>,
   }
 
@@ -149,16 +182,17 @@ cfg_has_statx! {{
     stx_mask: u32,
     stx_btime: libc::statx_timestamp,
   }
+  */
 
   // We prefer `statx` on Linux if available, which contains file creation time.
   // Default `stat64` contains no creation time.
-  #[allow(dead_code)]
+  //#[allow(dead_code)]
   unsafe fn try_statx(
     fd: c_int,
     path: *const libc::c_char,
     flags: i32,
     mask: u32,
-  ) -> Option<std::io::Result<FileAttr>> {
+  ) -> Option<std::io::Result<ExtraStat>> {
     use std::sync::atomic::{AtomicU8, Ordering};
 
     // Linux kernel prior to 4.11 or glibc prior to glibc 2.28 don't support `statx`
@@ -185,7 +219,7 @@ cfg_has_statx! {{
         // We do this mainly for performance, since it is nearly hundreds times
         // faster than a normal successful call.
         let err = cvt(statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut()))
-          .err()
+          .err() // Result<T, E> -> Option<E>
           .and_then(|e| e.raw_os_error());
         // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
         // and returns `EPERM`. Listing all possible errors seems not a good idea.
@@ -205,156 +239,82 @@ cfg_has_statx! {{
       return Some(Err(err));
     }
 
+    // TODO(jp)
     // We cannot fill `stat64` exhaustively because of private padding fields.
-    let mut stat: stat64 = mem::zeroed();
-    // `c_ulong` on gnu-mips, `dev_t` otherwise
-    stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as _;
+    let mut stat: libc::stat64 = mem::zeroed();
+    stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as dev_t;
     stat.st_ino = buf.stx_ino as libc::ino64_t;
     stat.st_nlink = buf.stx_nlink as libc::nlink_t;
     stat.st_mode = buf.stx_mode as libc::mode_t;
     stat.st_uid = buf.stx_uid as libc::uid_t;
     stat.st_gid = buf.stx_gid as libc::gid_t;
-    stat.st_rdev = libc::makedev(buf.stx_rdev_major, buf.stx_rdev_minor) as _;
-    stat.st_size = buf.stx_size as off64_t;
+    stat.st_rdev = libc::makedev(buf.stx_rdev_major, buf.stx_rdev_minor) as dev_t;
+    stat.st_size = buf.stx_size as libc::off64_t;
     stat.st_blksize = buf.stx_blksize as libc::blksize_t;
     stat.st_blocks = buf.stx_blocks as libc::blkcnt64_t;
     stat.st_atime = buf.stx_atime.tv_sec as libc::time_t;
-    // `i64` on gnu-x86_64-x32, `c_ulong` otherwise.
-    stat.st_atime_nsec = buf.stx_atime.tv_nsec as _;
+    stat.st_atime_nsec = buf.stx_atime.tv_nsec as ntime_t;
     stat.st_mtime = buf.stx_mtime.tv_sec as libc::time_t;
-    stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as _;
+    stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as ntime_t;
     stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
-    stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as _;
+    stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as ntime_t;
+    Some(Ok(ExtraStat { stat, st_btime = buf.stx_btime.tv_sec as libc::time_t, st_btime_nsec = buf.stx_btime.tv_nsec as ntime_t }))
 
-    let extra = StatxExtraFields {
-      stx_mask: buf.stx_mask,
-      stx_btime: buf.stx_btime,
-    };
-
-    Some(Ok(FileAttr {
-      stat,
-      statx_extra_fields: Some(extra),
-    }))
   }
-
-  impl FileAttr {
-    fn from_stat64(stat: stat64) -> Self {
-      Self { stat, statx_extra_fields: None }
-    }
-  }
-
-} else {
+} /* else {
   #[derive(Clone)]
   pub struct FileAttr {
-    stat: stat64,
+    stat: libc::stat64,
   }
+}} */
 
-  impl FileAttr {
-      fn from_stat64(stat: stat64) -> Self {
-          Self { stat }
-      }
+cfg_has_statx! {{
+  impl ExtraStat {
+    fn from_stat64(stat: libc::stat64) -> Self {
+      Self { stat, st_btime = 0, st_btime_nsec = 0 }
+    }
+  }
+} else {
+  #[cfg(target_os = "netbsd")]
+  impl ExtraStat {
+    fn from_stat64(stat: libc::stat64) -> Self {
+      Self { stat, st_btime = stat.st_birthtime, st_btime_nsec = stat.st_birthtimensec }
+    }
+  }
+  #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "macos"))]
+  impl ExtraStat {
+    fn from_stat64(stat: libc::stat64) -> Self {
+      Self { stat, st_btime = stat.st_birthtime, st_btime_nsec = stat.st_birthtime_nsec }
+    }
+  }
+  #[cfg(not(any(target_os = "netbsd", target_os = "freebsd", target_os = "openbsd", target_os = "macos")))]
+  impl ExtraStat {
+    fn from_stat64(stat: libc::stat64) -> Self {
+      Self { stat, st_btime = 0, st_btime_nsec = 0 }
+    }
   }
 }}
 
 /*
-    pub fn created(&self) -> io::Result<SystemTime> {
-        cfg_has_statx! {
-            if let Some(ext) = &self.statx_extra_fields {
-                return if (ext.stx_mask & libc::STATX_BTIME) != 0 {
-                    Ok(SystemTime::from(libc::timespec {
-                        tv_sec: ext.stx_btime.tv_sec as libc::time_t,
-                        tv_nsec: ext.stx_btime.tv_nsec as _,
-                    }))
-                } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "creation time is not available for the filesystem",
-                    ))
-                };
-            }
-        }
-
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "creation time is not available on this platform \
-                            currently",
-        ))
+cfg_has_statx! {{
+  impl FileAttr {
+    fn from_stat64(stat: libc::stat64) -> Self {
+      Self { stat, statx_extra_fields: None }
     }
-
-
-// for DirEntry
-        cfg_has_statx! {
-            if let Some(ret) = unsafe { try_statx(
-                fd,
-                name,
-                libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
-                libc::STATX_ALL,
-            ) } {
-                return ret;
-            }
-        }
-
-    pub fn file_attr(&self) -> io::Result<FileAttr> {
-        let fd = self.0.raw();
-
-        cfg_has_statx! {
-            if let Some(ret) = unsafe { try_statx(
-                fd,
-                b"\0" as *const _ as *const libc::c_char,
-                libc::AT_EMPTY_PATH | libc::AT_STATX_SYNC_AS_STAT,
-                libc::STATX_ALL,
-            ) } {
-                return ret;
-            }
-        }
-
-        let mut stat: stat64 = unsafe { mem::zeroed() };
-        cvt(unsafe { fstat64(fd, &mut stat) })?;
-        Ok(FileAttr::from_stat64(stat))
-    }
-
-pub fn stat(p: &Path) -> io::Result<FileAttr> {
-    let p = cstr(p)?;
-
-    cfg_has_statx! {
-        if let Some(ret) = unsafe { try_statx(
-            libc::AT_FDCWD,
-            p.as_ptr(),
-            libc::AT_STATX_SYNC_AS_STAT,
-            libc::STATX_ALL,
-        ) } {
-            return ret;
-        }
-    }
-
-    let mut stat: stat64 = unsafe { mem::zeroed() };
-    cvt(unsafe { stat64(p.as_ptr(), &mut stat) })?;
-    Ok(FileAttr::from_stat64(stat))
-}
-
-pub fn lstat(p: &Path) -> io::Result<FileAttr> {
-    let p = cstr(p)?;
-
-    cfg_has_statx! {
-        if let Some(ret) = unsafe { try_statx(
-            libc::AT_FDCWD,
-            p.as_ptr(),
-            libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
-            libc::STATX_ALL,
-        ) } {
-            return ret;
-        }
-
-    let mut stat: stat64 = unsafe { mem::zeroed() };
-    cvt(unsafe { lstat64(p.as_ptr(), &mut stat) })?;
-    Ok(FileAttr::from_stat64(stat))
-}
+  }
+} else {
+  impl FileAttr {
+      fn from_stat64(stat: libc::stat64) -> Self {
+          Self { stat }
+      }
+  }
+}}
 */
 
 // #[cfg(all(target_os = "linux", target_env = "gnu"))]
 #[allow(dead_code)]
-// pub fn my_fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<FileAttr> {
-pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<FileAttr> {
+pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<ExtraStat> {
+// pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<ExtraStat> {
   let p = cstr(path)?;
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
@@ -362,6 +322,7 @@ pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io:
     0
   };
   let fd = dirfd.unwrap_or(libc::AT_FDCWD);
+
   cfg_has_statx! {
     if let Some(ret) = unsafe { try_statx(
       fd,
@@ -373,12 +334,30 @@ pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io:
     }
   }
 
-  let mut stat: stat64 = unsafe { mem::zeroed() };
+  let mut stat: libc::stat64 = unsafe { mem::zeroed() };
   cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
-  Ok(FileAttr::from_stat64(stat))
+  Ok(ExtraAttr::from_stat64(stat))
 }
 
+#[allow(dead_code)]
+pub fn fstat(fd: RawFd) -> std::io::Result<ExtraStat> {
+  let p = cstr(Path::new(""))?;
 
+  cfg_has_statx! {
+    if let Some(ret) = unsafe { try_statx(
+      fd,
+      p.as_ptr(),
+      libc::AT_STATX_SYNC_AS_STAT | libc::AT_EMPTY_PATH,
+      libc::STATX_ALL,
+    ) } {
+      return ret;
+    }
+  }
+
+  let mut stat: libc::stat64 = unsafe { mem::zeroed() };
+  cvt(unsafe { libc::fstat64(fd, &mut stat) })?;
+  Ok(ExtraAttr::from_stat64(stat))
+}
 
 
 
