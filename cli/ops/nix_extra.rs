@@ -321,14 +321,13 @@ fn cstr(path: &Path) -> std::io::Result<CString> {
 }
 */
 
-fn result_nix_path<P: NixPath, T, F>(_p: &P, _f: F) -> Result<T>
+fn result_nix_path<P: ?Sized + NixPath, T, F>(_p: &P, _f: F) -> Result<T>
     where F: FnOnce(&CStr) -> T {
   Err(nix::Error::last()) // FIXME
 }
 
 #[allow(dead_code)]
 pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) ->Result<ExtraStat> {
-// pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<ExtraStat> {
   result_nix_path(path, |cstr| {
     let flag = if nofollow {
       libc::AT_SYMLINK_NOFOLLOW
