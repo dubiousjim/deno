@@ -937,9 +937,9 @@ fn op_stat(
       #[cfg(not(target_os = "linux"))]
       let birthtime: i64 = filestat.st_birthtime;
       let json_val = json!({
-        "isFile": sflag.contains(SFlag::S_IFREG),
-        "isDir": sflag.contains(SFlag::S_IFDIR),
-        "isSymlink": sflag.contains(SFlag::S_IFLNK),
+        "isFile": sflag == SFlag::S_IFREG,
+        "isDir": sflag == SFlag::S_IFDIR,
+        "isSymlink": sflag == SFlag::S_IFLNK,
         "size": filestat.st_size,
         // all times are i64
         "modified": filestat.st_mtime, // changed when fdatasync
