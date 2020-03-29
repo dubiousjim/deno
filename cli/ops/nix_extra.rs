@@ -88,6 +88,9 @@ macro_rules! syscall {
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
+
+
+
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;
 }
@@ -103,8 +106,51 @@ macro_rules! impl_is_minus_one {
 impl_is_minus_one! { i32 } // i8 i16 i64 isize
 
 fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
-    if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
+  if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
 }
+
+// should be same as nix::Errno::result(t)
+fn nix_cvt<T: IsMinusOne>(t: T) -> Result<T> {
+  if t.is_minus_one() { Err(nix::Error::last()) } else { Ok(t) }
+}
+
+/* Nix pattern is
+  // -> Result<()> {
+    let res = path.with_nix_path(|cstr| {
+      unsafe {
+        libc::blah(cstr.as_ptr(), ...) // -> -1
+      }
+    })?;
+    Errno::result(res).map(drop)
+  }
+
+  Nix Errno
+  Errno::last() -> Self
+  Errno::from_i32(i32) -> Self
+  Errno::desc(self) -> &str
+  unsafe Errno::clear()
+  Errno::result<N>(value: N) -> Result<N, nix::Error> // only use when -1 is the sentinel
+  // where N is isize, i32, i64, *mut c_void, sighandler_t
+
+        if value == N::sentinel() {
+          Err(nix::Error::Sys(Self::last()))
+        } else {
+          Ok(value)
+        }
+
+  Nix enum Error {
+    Sys(nix::errno::Errno),
+    InvalidPath,
+    InvalidUtf8,
+    UnsupportedOperation
+  }
+  Error::last() -> new Sys(current Errno)
+  Errno::invalid_argument() -> new Sys(EINVAL)
+  Error::from_errno(Errno) -> new Sys(Errno)
+  Error::as_errno(self) -> Option<Errno>
+ */
+
+
 
 // `statx` not exposed on musl and other libcs, see https://github.com/rust-lang/rust/pull/67774
 macro_rules! cfg_has_statx {
@@ -124,6 +170,7 @@ macro_rules! cfg_has_statx {
         }
     };
 }
+
 
 
 // `c_ulong` on gnu-mips, `dev_t` otherwise
@@ -158,7 +205,6 @@ pub struct ExtraStat {
   st_btime_nsec: ntime_t,
 }
 
-// #[cfg(all(target_os = "linux", target_env = "gnu"))]
 cfg_has_statx! {{
   // We prefer `statx` on Linux if available, which contains file creation time.
   // Default `stat64` contains no creation time.
@@ -167,7 +213,7 @@ cfg_has_statx! {{
     path: *const libc::c_char,
     flags: i32,
     mask: u32,
-  ) -> Option<std::io::Result<ExtraStat>> {
+  ) -> Option<Result<ExtraStat>> {
     use std::sync::atomic::{AtomicU8, Ordering};
 
     // Linux kernel prior to 4.11 or glibc prior to glibc 2.28 don't support `statx`
@@ -193,9 +239,9 @@ cfg_has_statx! {{
         // is available. According to the manual, it is expected to fail with EFAULT.
         // We do this mainly for performance, since it is nearly hundreds times
         // faster than a normal successful call.
-        let err = cvt(statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut()))
+        let err = nix_cvt(statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut()))
           .err() // Result<T, E> -> Option<E>
-          .and_then(|e| e.raw_os_error());
+          .and_then(|e| /*e.raw_os_error()*/ e.as_errno());
         // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
         // and returns `EPERM`. Listing all possible errors seems not a good idea.
         // See: https://github.com/rust-lang/rust/issues/65662
@@ -210,8 +256,8 @@ cfg_has_statx! {{
     }
 
     let mut buf: libc::statx = mem::zeroed();
-    if let Err(err) = cvt(statx(fd, path, flags, mask, &mut buf)) {
-      return Some(Err(err));
+    if let Err(err) = nix_cvt(statx(fd, path, flags, mask, &mut buf)) {
+      return Some(Err(err)); // FIXME
     }
 
     // We cannot fill `stat64` exhaustively because of private padding fields.
@@ -265,7 +311,7 @@ cfg_has_statx! {{
 
 
 
-
+/*
 
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
@@ -310,11 +356,11 @@ pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t)
   }
 
   let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-  cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
+  nix_cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
   Ok(ExtraStat::from_stat64(stat))
 }
 
-
+*/
 
 
 #[allow(dead_code)]
@@ -328,12 +374,12 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
       libc::AT_STATX_SYNC_AS_STAT | libc::AT_EMPTY_PATH,
       libc::STATX_ALL,
     ) } {
-      return ret.map_err(nix::Error::from);
+      return ret;
     }
   }
 
   let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-  cvt(unsafe { libc::fstat64(fd, &mut stat) })?;
+  nix_cvt(unsafe { libc::fstat64(fd, &mut stat) })?;
   Ok(ExtraStat::from_stat64(stat))
 }
 
