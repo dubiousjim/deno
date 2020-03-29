@@ -919,9 +919,8 @@ fn op_stat(
       use crate::nix_extra::{fstatat, /*ExtraStat, FileStat,*/ SFlag};
       let fd = atdir.map(|dir| dir.as_raw_fd());
       let extrastat = fstatat(fd, &path, nofollow)?;
-      let sflag = SFlag::from_bits_truncate(filestat.st_mode);
-      let btime = filestat.st_btime;
       let filestat = extrastat.stat;
+      let sflag = SFlag::from_bits_truncate(filestat.st_mode);
       let json_val = json!({
         "isFile": sflag == SFlag::S_IFREG,
         "isDir": sflag == SFlag::S_IFDIR,
@@ -930,7 +929,7 @@ fn op_stat(
         // all times are i64
         "modified": filestat.st_mtime, // changed when fdatasync
         "accessed": filestat.st_atime,
-        "created": btime,
+        "created": extrastat.st_btime,
         "ctime": filestat.st_ctime, // changed when fdatasync or chown/chmod/rename/moved
         "dev": filestat.st_dev, // u64
         "ino": filestat.st_ino, // u64

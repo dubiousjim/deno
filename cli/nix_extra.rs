@@ -12,14 +12,14 @@ use std::os::unix::io::RawFd;
 #[allow(unused_imports)]
 use std::ptr;
 
-pub use nix::sys::stat::{FileStat, Mode, SFlag, dev_t, mode_t};
+pub use nix::sys::stat::{FileStat, Mode, SFlag, mode_t};
 
 // `c_ulong` on gnu-mips, `dev_t` otherwise
 #[allow(unused_imports)]
-use libc::dev_t;
+pub use libc::dev_t;
 // `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
 #[allow(non_camel_case_types)]
-type ntime_t = i64;
+pub type ntime_t = i64;
 
 #[cfg(any(target_os = "linux", target_os = "emscripten"))]
 use libc::{fstat64, fstatat64, stat64};
@@ -215,7 +215,7 @@ pub struct ExtraStat {
     st_ctime: libc::time_t,
     st_ctime_nsec: ntime_t,
   */
-  stat: stat64, // nix::sys::stat::FileStat = libc::stat/stat64
+  pub stat: stat64, // nix::sys::stat::FileStat = libc::stat/stat64
   st_btime: libc::time_t,
   st_btime_nsec: ntime_t,
 }
