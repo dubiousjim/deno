@@ -320,46 +320,39 @@ fn cstr(path: &Path) -> std::io::Result<CString> {
 }
 */
 
+fn result_nix_path<P: NixPath, F>(_p: P, _f: F) -> Result<T>
+    where F: FnOnce(&Cstr) -> T {
+  Err(Error::last())
+}
+
 #[allow(dead_code)]
 pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) ->Result<ExtraStat> {
 // pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<ExtraStat> {
-/*
-    let res = path.with_nix_path(|cstr| {
-      unsafe {
-        libc::mknod(cstr.as_ptr(), kind.bits | perm.bits() as mode_t, dev)
+  result_nix_path(p, |cstr| {
+    let flag = if nofollow {
+      libc::AT_SYMLINK_NOFOLLOW
+    } else {
+      0
+    };
+    let fd = dirfd.unwrap_or(libc::AT_FDCWD);
+
+    cfg_has_statx! {
+      if let Some(ret) = unsafe { try_statx(
+        fd,
+        cstr.as_ptr(),
+        flag | libc::AT_STATX_SYNC_AS_STAT,
+        libc::STATX_ALL,
+      ) } {
+        return ret;
       }
-    })?;
-    Errno::result(res).map(drop)
-*/
-
-  // <P: NixPath>.with_nix_path(F: &CStr -> T) -> Result<T>
-  let p = path.with_nix_path(|cstr| cstr)?;
-
-  let flag = if nofollow {
-    libc::AT_SYMLINK_NOFOLLOW
-  } else {
-    0
-  };
-  let fd = dirfd.unwrap_or(libc::AT_FDCWD);
-
-  cfg_has_statx! {
-    if let Some(ret) = unsafe { try_statx(
-      fd,
-      p.as_ptr(),
-      flag | libc::AT_STATX_SYNC_AS_STAT,
-      libc::STATX_ALL,
-    ) } {
-      return ret;
     }
-  }
 
-  let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-  let res = unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) };
-  Errno::result(res)?;
-  Ok(ExtraStat::from_stat64(stat))
+    let mut stat: libc::stat64 = unsafe { mem::zeroed() };
+    let res = unsafe { libc::fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
+    Errno::result(res)?;
+    Ok(ExtraStat::from_stat64(stat))
+  })
 }
-
-
 
 #[allow(dead_code)]
 pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
