@@ -315,9 +315,11 @@ pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t)
 }
 
 
+
+
 #[allow(dead_code)]
-pub fn fstat(fd: RawFd) -> std::io::Result<ExtraStat> {
-  let p = cstr(Path::new(""))?;
+pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
+  let p = CString::new("");
 
   cfg_has_statx! {
     if let Some(ret) = unsafe { try_statx(
