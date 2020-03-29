@@ -435,6 +435,7 @@ struct MkdirArgs {
   path: String,
   recursive: bool,
   mode: Option<u32>,
+  atrid: Option<i32>,
 }
 
 fn op_mkdir(
@@ -448,9 +449,48 @@ fn op_mkdir(
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    #[cfg(unix)]
+    {
+      use crate::nix_extra::{mkdirat, mode_t, Mode};
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      mkdirat(
+        fd,
+        &path,
+        Mode::from_bits_truncate(mode as mode_t),
+        args.recursive,
+      )?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let mut builder = std::fs::DirBuilder::new();
+      builder.recursive(args.recursive);
+      builder.create(path)?;
+    }
+    Ok(json!({}))
+    /*
     if args.recursive {
       // exit early if dir already exists, so that we don't
       // try to apply mode and remove dir on failure
@@ -490,12 +530,15 @@ fn op_mkdir(
       }
     }
     Ok(json!({}))
+    */
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -675,6 +718,7 @@ struct RemoveArgs {
   promise_id: Option<u64>,
   path: String,
   recursive: bool,
+  atrid: Option<i32>,
 }
 
 fn op_remove(
@@ -688,25 +732,67 @@ fn op_remove(
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    let metadata = tokio::fs::symlink_metadata(&path).await?;
+  let blocking = move || {
     debug!("op_remove {} {}", path.display(), recursive);
-    let file_type = metadata.file_type();
-    if file_type.is_file() || file_type.is_symlink() {
-      tokio::fs::remove_file(&path).await?;
-    } else if recursive {
-      tokio::fs::remove_dir_all(&path).await?;
-    } else {
-      tokio::fs::remove_dir(&path).await?;
+    #[cfg(unix)]
+    {
+      use crate::nix_extra::{cstr, filetypeat, unlinkat, UnlinkatFlags};
+      let fd = match atdir {
+        Some(dir) => dir.as_raw_fd(),
+        None => libc::AT_FDCWD,
+      };
+      let cpath = cstr(&path)?;
+      let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
+        UnlinkatFlags::NoRemoveDir
+      } else if recursive {
+        UnlinkatFlags::RemoveDirAll
+      } else {
+        UnlinkatFlags::RemoveDir
+      };
+      unlinkat(Some(fd), &path, flag)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let metadata = std::fs::symlink_metadata(&path)?;
+      let file_type = metadata.file_type();
+      if file_type.is_file() || file_type.is_symlink() {
+        std::fs::remove_file(&path)?;
+      } else if recursive {
+        std::fs::remove_dir_all(&path)?;
+      } else {
+        std::fs::remove_dir(&path)?;
+      }
     }
     Ok(json!({}))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -912,30 +998,11 @@ fn op_stat(
     debug!("op_stat {} {}", path.display(), nofollow);
     #[cfg(unix)]
     {
-      use nix::fcntl::AtFlags;
-      use nix::sys::stat::{fstatat, lstat, stat, FileStat, SFlag};
-      let filestat: FileStat = match atdir {
-        Some(dir) => {
-          let flag = if nofollow {
-            AtFlags::AT_SYMLINK_NOFOLLOW
-          } else {
-            AtFlags::AT_SYMLINK_FOLLOW
-          };
-          fstatat(dir.as_raw_fd(), &path, flag)?
-        }
-        None if nofollow => lstat(&path)?,
-        None => stat(&path)?,
-      };
+      use crate::nix_extra::{fstatat, /*ExtraStat, FileStat,*/ SFlag};
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      let extrastat = fstatat(fd, &path, nofollow)?;
+      let filestat = extrastat.stat;
       let sflag = SFlag::from_bits_truncate(filestat.st_mode);
-      // see https://unix.stackexchange.com/questions/91197
-      // not available on Linux, and their
-      // libc::statx(dirfd, &path, flags, mask, &statxbuf_with_stx_btime)
-      // doesn't apply to fd
-      #[cfg(target_os = "linux")]
-      let birthtime: i64 = 0;
-      // let birthtime: i64 = filestat.st_birthtime;
-      #[cfg(not(target_os = "linux"))]
-      let birthtime: i64 = filestat.st_birthtime;
       let json_val = json!({
         "isFile": sflag == SFlag::S_IFREG,
         "isDir": sflag == SFlag::S_IFDIR,
@@ -944,7 +1011,7 @@ fn op_stat(
         // all times are i64
         "modified": filestat.st_mtime, // changed when fdatasync
         "accessed": filestat.st_atime,
-        "created": birthtime,
+        "created": extrastat.st_btime,
         "ctime": filestat.st_ctime, // changed when fdatasync or chown/chmod/rename/moved
         "dev": filestat.st_dev, // u64
         "ino": filestat.st_ino, // u64
@@ -1067,7 +1134,8 @@ struct RenameArgs {
   oldpath: String,
   newpath: String,
   create_new: bool,
-  atrid: Option<i32>,
+  oldatrid: Option<i32>,
+  newatrid: Option<i32>,
 }
 
 fn op_rename(
@@ -1088,12 +1156,12 @@ fn op_rename(
     state.check_read(&newpath)?;
   }
 
-  let atdir = match args.atrid {
-    Some(atrid) if cfg!(unix) => {
+  let oldatdir = match args.oldatrid {
+    Some(oldatrid) if cfg!(unix) => {
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid as u32)
+        .get::<StreamResourceHolder>(oldatrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1105,27 +1173,61 @@ fn op_rename(
     Some(_) => return Err(OpError::not_implemented()),
     None => None,
   };
-  // TODO(jp5) rename (complex)
-  let _ = atdir; // avoid unused warning
+
+  let newatdir = match args.newatrid {
+    Some(newatrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(newatrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    if create_new {
-      // like `mv -Tn`, we don't follow symlinks
-      let old_meta = std::fs::symlink_metadata(&oldpath)?;
-      if cfg!(unix) && old_meta.is_dir() {
-        // on Unix, mv from dir to file always fails, but to emptydir is ok
-        std::fs::create_dir(&newpath)?;
-      } else {
+    #[cfg(unix)]
+    {
+      use nix::fcntl::renameat;
+      let oldfd = oldatdir.map(|dir| dir.as_raw_fd());
+      let newfd = newatdir.map(|dir| dir.as_raw_fd());
+      if create_new {
+        // like `mv -Tn`, we don't follow symlinks
+        let old_meta = std::fs::symlink_metadata(&oldpath)?;
+        if old_meta.is_dir() {
+          // on Unix, mv from dir to file always fails, but to emptydir is ok
+          std::fs::create_dir(&newpath)?;
+        } else {
+          let mut open_options = std::fs::OpenOptions::new();
+          open_options.write(true).create_new(true);
+          if let Err(e) = open_options.open(&newpath) {
+            return Err(OpError::from(e));
+          }
+        }
+      }
+      renameat(oldfd, &oldpath, newfd, &newpath)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = oldatdir; // avoid unused warning
+      let _ = newatdir;
+      if create_new {
         // on Windows, mv from dir to dir always fails, but to file is ok
         let mut open_options = std::fs::OpenOptions::new();
         open_options.write(true).create_new(true);
         if let Err(e) = open_options.open(&newpath) {
           // if newpath.is_dir(), prefer to fail with AlreadyExists
-          if cfg!(windows)
-            && e.kind() == std::io::ErrorKind::PermissionDenied
+          if e.kind() == std::io::ErrorKind::PermissionDenied
             && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
@@ -1134,8 +1236,8 @@ fn op_rename(
           return Err(OpError::from(e));
         }
       }
+      std::fs::rename(&oldpath, &newpath)?;
     }
-    std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   };
 
