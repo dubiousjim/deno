@@ -170,7 +170,7 @@ Nix enum Error {
   UnsupportedOperation
 }
 Error::last() -> new Sys(current Errno)
-Errno::invalid_argument() -> new Sys(EINVAL)
+Error::invalid_argument() -> new Sys(EINVAL)
 Error::from_errno(Errno) -> new Sys(Errno)
 Error::as_errno(self) -> Option<Errno>
 */
@@ -384,6 +384,72 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   Errno::result(res)?;
   Ok(ExtraStat::from_stat64(stat))
 }
+
+fn cstr(path: &Path) -> std::io::Result<CString> {
+  Ok(CString::new(path.as_os_str().as_bytes())?)
+}
+
+#[allow(dead_code)]
+pub fn mkdirat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, mode: Mode, recursive: bool) -> Result<()> {
+  path.with_nix_path(|cstr| {
+    let path = Path::new(cstr);
+    match dirfd {
+      Some(fd) => _mkdirat(fd, path.as_ref(), mode.bits() as mode_t, recursive),
+      None => _mkdir(path.as_ref(), mode.bits() as mode_t, recursive),
+    }
+  })
+  .and_then(|ok| ok)
+}
+
+fn _mkdirat(fd: RawFd, path: &Path, mode: mode_t, recursive: bool) -> Result<()> {
+  if recursive {
+    _mkdirat_all(fd, path, mode)
+  } else {
+    let cstr = cstr(path)?;
+    let res = unsafe { libc::mkdirat(fd, cstr.as_ptr(), mode) };
+    Errno::result(res).map(drop)
+  }
+}
+
+fn _mkdirat_all(fd: RawFd, path: &Path, mode: mode_t) -> Result<()> {
+  // FIXME
+  Ok(())
+}
+
+fn _mkdir(path: &Path, mode: mode_t, recursive: bool) -> Result<()> {
+  if recursive {
+    _mkdir_all(path, mode)
+  } else {
+    let cstr = cstr(path)?;
+    let res = unsafe { libc::mkdir(cstr.as_ptr(), mode) };
+    Errno::result(res).map(drop)
+  }
+}
+
+fn _mkdir_all(path: &Path, mode: mode_t) -> Result<()> {
+  if path == Path::new("") {
+    return Ok(());
+  }
+  match _mkdir(path, mode, false) {
+    Ok(()) => return Ok(()),
+    // Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    // Err(ref e) if e == nix::Error::Sys(nix::errno::Errno::ENOENT) => {}
+    Err(ref e) if e.as_errno() == Some(nix::errno::Errno::ENOENT) => {}
+    Err(_) if path.is_dir() => return Ok(()),
+    Err(e) => return Err(e),
+  }
+  match path.parent() {
+    Some(p) => _mkdir_all(p, 0o777)?,
+    // None => { return Err(std::io::Error::new(std::io::ErrorKind::Other, "failed to create whole tree")); }
+    None => { return Err(nix::Error::Sys(nix::errno::Errno::EACCES)); },
+  }
+  match _mkdir(path, mode, false) {
+    Ok(()) => Ok(()),
+    Err(_) if path.is_dir() => Ok(()),
+    Err(e) => Err(e),
+  }
+}
+
 
 #[cfg(test)]
 mod tests {
