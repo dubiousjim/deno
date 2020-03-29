@@ -364,9 +364,8 @@ pub fn fstatat<P: ?Sized + NixPath>(
 
 #[allow(dead_code)]
 pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
-  let p = CString::new("").unwrap();
-
   cfg_has_statx! {
+    let p = CString::new("").unwrap();
     if let Some(ret) = unsafe { try_statx(
       fd,
       p.as_ptr(),
