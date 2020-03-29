@@ -322,7 +322,7 @@ fn cstr(path: &Path) -> std::io::Result<CString> {
 */
 
 fn result_nix_path<P: ?Sized + NixPath, T, F>(_p: &P, _f: F) -> Result<T>
-    where F: FnOnce(&CStr) -> T {
+    where F: FnOnce(&CStr) -> Result<T> {
   Err(nix::Error::last()) // FIXME
 }
 
