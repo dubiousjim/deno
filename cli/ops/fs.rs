@@ -22,7 +22,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(unix)]
 #[allow(unused_imports)]
-use super::nix_extra::faccessat;
+use crate::nix_extra::faccessat;
 
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
@@ -2003,7 +2003,7 @@ fn op_fchown(
   let blocking = move || {
     #[cfg(unix)]
     {
-      use super::nix_extra::fchown;
+      use crate::nix_extra::fchown;
       use nix::unistd::{Gid, Uid};
       let fd = check_open_for_writing(&file)?;
       debug!(
