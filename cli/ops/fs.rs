@@ -916,30 +916,12 @@ fn op_stat(
     debug!("op_stat {} {}", path.display(), nofollow);
     #[cfg(unix)]
     {
-      use nix::fcntl::AtFlags;
-      use nix::sys::stat::{fstatat, lstat, stat, FileStat, SFlag};
-      let filestat: FileStat = match atdir {
-        Some(dir) => {
-          let flag = if nofollow {
-            AtFlags::AT_SYMLINK_NOFOLLOW
-          } else {
-            AtFlags::AT_SYMLINK_FOLLOW
-          };
-          fstatat(dir.as_raw_fd(), &path, flag)?
-        }
-        None if nofollow => lstat(&path)?,
-        None => stat(&path)?,
-      };
+      use crate::nix_extra::{fstatat, /*ExtraStat, FileStat,*/ SFlag};
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      let extrastat = fstatat(fd, &path, nofollow)?;
       let sflag = SFlag::from_bits_truncate(filestat.st_mode);
-      // see https://unix.stackexchange.com/questions/91197
-      // not available on Linux, and their
-      // libc::statx(dirfd, &path, flags, mask, &statxbuf_with_stx_btime)
-      // doesn't apply to fd
-      #[cfg(target_os = "linux")]
-      let birthtime: i64 = 0;
-      // let birthtime: i64 = filestat.st_birthtime;
-      #[cfg(not(target_os = "linux"))]
-      let birthtime: i64 = filestat.st_birthtime;
+      let btime = filestat.st_btime;
+      let filestat = extrastat.stat;
       let json_val = json!({
         "isFile": sflag == SFlag::S_IFREG,
         "isDir": sflag == SFlag::S_IFDIR,
@@ -948,7 +930,7 @@ fn op_stat(
         // all times are i64
         "modified": filestat.st_mtime, // changed when fdatasync
         "accessed": filestat.st_atime,
-        "created": birthtime,
+        "created": btime,
         "ctime": filestat.st_ctime, // changed when fdatasync or chown/chmod/rename/moved
         "dev": filestat.st_dev, // u64
         "ino": filestat.st_ino, // u64

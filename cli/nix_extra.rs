@@ -12,6 +12,8 @@ use std::os::unix::io::RawFd;
 #[allow(unused_imports)]
 use std::ptr;
 
+pub use nix::sys::stat::{FileStat, Mode, SFlag, dev_t, mode_t};
+
 // `c_ulong` on gnu-mips, `dev_t` otherwise
 #[allow(unused_imports)]
 use libc::dev_t;
