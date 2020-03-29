@@ -7,9 +7,12 @@ use nix::unistd::{Gid, Uid, AccessFlags};
 use nix::{NixPath, Result};
 use std::os::unix::io::RawFd;
 use std::ffi::CString;
-use std::{mem, ptr};
+use std::mem
+#[allow(unused_imports)]
+use std::ptr;
 
 // `c_ulong` on gnu-mips, `dev_t` otherwise
+#[allow(unused_imports)]
 use libc::dev_t;
 // `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
 #[allow(non_camel_case_types)]
