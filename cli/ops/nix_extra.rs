@@ -333,7 +333,7 @@ pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bo
 */
 
   // <P: NixPath>.with_nix_path(F: &CStr -> T) -> Result<T>
-  let p = path.with_nix_path(|cstr| cstr; })?;
+  let p = path.with_nix_path(|cstr| cstr)?;
 
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
