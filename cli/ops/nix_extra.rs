@@ -317,8 +317,6 @@ cfg_has_statx! {{
 
 
 
-/*
-
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
@@ -326,18 +324,14 @@ fn cstr(path: &Path) -> std::io::Result<CString> {
 
 #[allow(dead_code)]
 // pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<ExtraStat> {
-pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<ExtraStat> {
-
+pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<ExtraStat> {
 /*
-pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t) -> Result<()> {
     let res = path.with_nix_path(|cstr| {
-        unsafe {
-            libc::mknod(cstr.as_ptr(), kind.bits | perm.bits() as mode_t, dev)
-        }
+      unsafe {
+        libc::mknod(cstr.as_ptr(), kind.bits | perm.bits() as mode_t, dev)
+      }
     })?;
-
     Errno::result(res).map(drop)
-}
 */
 
   // let res = path.with_nix_path(|cstr| {
@@ -362,11 +356,11 @@ pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t)
   }
 
   let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-  nix_cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
+  let res = unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) };
+  Errno::result(res)?;
   Ok(ExtraStat::from_stat64(stat))
 }
 
-*/
 
 
 #[allow(dead_code)]
