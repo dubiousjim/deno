@@ -240,8 +240,7 @@ cfg_has_statx! {
     stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
     stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as ntime_t;
     Some(Ok(ExtraStat { stat, st_btime = buf.stx_btime.tv_sec as libc::time_t, st_btime_nsec = buf.stx_btime.tv_nsec as ntime_t }))
-  }
-}
+  }}
 
 cfg_has_statx! {{
   impl ExtraStat {
