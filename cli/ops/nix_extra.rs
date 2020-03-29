@@ -73,14 +73,12 @@ use std::ptr;
 use std::mem;
 use libc::c_int;
 
-// #[allow(dead_code)]
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
 #[cfg(target_os = "linux")]
-// #[allow(unused_imports)]
 macro_rules! syscall {
     (fn $name:ident($sysname:ident, $($arg_name:ident: $t:ty),*) -> $ret:ty) => (
         unsafe fn $name($($arg_name:$t),*) -> $ret {
@@ -141,7 +139,6 @@ use libc::dev_t;
 // `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
 type ntime_t = i64;
 
-#[allow(unused)]
 #[derive(Clone)]
 pub struct ExtraStat {
 /*
@@ -168,10 +165,9 @@ pub struct ExtraStat {
 }
 
 // #[cfg(all(target_os = "linux", target_env = "gnu"))]
-cfg_has_statx! {{
+cfg_has_statx! {
   // We prefer `statx` on Linux if available, which contains file creation time.
   // Default `stat64` contains no creation time.
-  //#[allow(dead_code)]
   unsafe fn try_statx(
     fd: c_int,
     path: *const libc::c_char,
@@ -244,9 +240,8 @@ cfg_has_statx! {{
     stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
     stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as ntime_t;
     Some(Ok(ExtraStat { stat, st_btime = buf.stx_btime.tv_sec as libc::time_t, st_btime_nsec = buf.stx_btime.tv_nsec as ntime_t }))
-
   }
-}}
+}
 
 cfg_has_statx! {{
   impl ExtraStat {
@@ -275,23 +270,6 @@ cfg_has_statx! {{
   }
 }}
 
-/*
-cfg_has_statx! {{
-  impl FileAttr {
-    fn from_stat64(stat: libc::stat64) -> Self {
-      Self { stat, statx_extra_fields: None }
-    }
-  }
-} else {
-  impl FileAttr {
-      fn from_stat64(stat: libc::stat64) -> Self {
-          Self { stat }
-      }
-  }
-}}
-*/
-
-// #[cfg(all(target_os = "linux", target_env = "gnu"))]
 #[allow(dead_code)]
 pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<ExtraStat> {
 // pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<ExtraStat> {
