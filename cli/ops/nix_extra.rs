@@ -3,22 +3,23 @@
 
 use nix::errno::Errno;
 use nix::fcntl::AtFlags;
-use nix::unistd::AccessFlags;
+use nix::unistd::{Gid, Uid, AccessFlags};
 use nix::{NixPath, Result};
 use std::os::unix::io::RawFd;
-
-use libc::{gid_t, uid_t};
-use nix::unistd::{Gid, Uid};
-
-use libc::c_int;
-// use std::ffi::{CStr, CString};
 use std::ffi::CString;
 use std::{mem, ptr};
+
 // `c_ulong` on gnu-mips, `dev_t` otherwise
 use libc::dev_t;
 // `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
 #[allow(non_camel_case_types)]
 type ntime_t = i64;
+
+#[cfg(target_os = "macos")]
+use libc::{stat as stat64, fstatat as fstatat64, fstat as fstat64};
+#[cfg(target_os = "linux")]
+use libc::{stat64, fstatat64, fstat64};
+
 
 /// Based on https://github.com/nix-rust/nix/pull/1134
 ///
@@ -61,10 +62,10 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
   // around to get -1.
   let uid: libc::uid_t = owner
     .map(Into::into)
-    .unwrap_or_else(|| (0 as uid_t).wrapping_sub(1));
+    .unwrap_or_else(|| (0 as libc::uid_t).wrapping_sub(1));
   let gid: libc::gid_t = group
     .map(Into::into)
-    .unwrap_or_else(|| (0 as gid_t).wrapping_sub(1));
+    .unwrap_or_else(|| (0 as libc::gid_t).wrapping_sub(1));
 
   let res = unsafe { libc::fchown(fd, uid, gid) };
   Errno::result(res).map(drop)
@@ -184,7 +185,7 @@ pub struct ExtraStat {
     st_ctime: libc::time_t,
     st_ctime_nsec: ntime_t,
   */
-  stat: libc::stat64, // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
+  stat: stat64, // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
   st_btime: libc::time_t,
   st_btime_nsec: ntime_t,
 }
@@ -193,7 +194,7 @@ cfg_has_statx! {{
   // We prefer `statx` on Linux if available, which contains file creation time.
   // Default `stat64` contains no creation time.
   unsafe fn try_statx(
-    fd: c_int,
+    fd: libc::c_int,
     path: *const libc::c_char,
     flags: i32,
     mask: u32,
@@ -209,12 +210,12 @@ cfg_has_statx! {{
     syscall! {
         fn statx(
             SYS_statx,
-            fd: c_int,
+            fd: libc::c_int,
             pathname: *const libc::c_char,
-            flags: c_int,
+            flags: libc::c_int,
             mask: libc::c_uint,
             statxbuf: *mut libc::statx
-        ) -> c_int
+        ) -> libc::c_int
     }
 
     match STATX_STATE.load(Ordering::Relaxed) {
@@ -257,7 +258,7 @@ cfg_has_statx! {{
     }
 
     // We cannot fill `stat64` exhaustively because of private padding fields.
-    let mut stat: libc::stat64 = mem::zeroed();
+    let mut stat: stat64 = mem::zeroed();
     stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as dev_t;
     stat.st_ino = buf.stx_ino as libc::ino64_t;
     stat.st_nlink = buf.stx_nlink as libc::nlink_t;
@@ -278,7 +279,7 @@ cfg_has_statx! {{
   }
 
   impl ExtraStat {
-    fn from_stat64(stat: libc::stat64) -> Self {
+    fn from_stat64(stat: stat64) -> Self {
       Self { stat, st_btime: 0, st_btime_nsec: 0 }
     }
   }
@@ -286,31 +287,19 @@ cfg_has_statx! {{
 } else {
   impl ExtraStat {
     #[cfg(target_os = "netbsd")]
-    fn from_stat64(stat: libc::stat64) -> Self {
+    fn from_stat64(stat: stat64) -> Self {
       Self { stat, st_btime: stat.st_birthtime, st_btime_nsec: stat.st_birthtimensec }
     }
     #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "macos"))]
-    fn from_stat64(stat: libc::stat64) -> Self {
+    fn from_stat64(stat: stat64) -> Self {
       Self { stat, st_btime: stat.st_birthtime, st_btime_nsec: stat.st_birthtime_nsec }
     }
     #[cfg(not(any(target_os = "netbsd", target_os = "freebsd", target_os = "openbsd", target_os = "macos")))]
-    fn from_stat64(stat: libc::stat64) -> Self {
+    fn from_stat64(stat: stat64) -> Self {
       Self { stat, st_btime: 0, st_btime_nsec: 0 }
     }
   }
 }}
-
-/*
-fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
-where
-  F: FnOnce(&CStr) -> Result<T>,
-{
-  match p.with_nix_path(f) {
-    Ok(res) => res,
-    Err(e) => Err(e),
-  }
-}
-*/
 
 #[allow(dead_code)]
 pub fn fstatat<P: ?Sized + NixPath>(
@@ -337,8 +326,8 @@ pub fn fstatat<P: ?Sized + NixPath>(
       }
     }
 
-    let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-    let res = unsafe { libc::fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
+    let mut stat: stat64 = unsafe { mem::zeroed() };
+    let res = unsafe { fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
     Errno::result(res)?;
     Ok(ExtraStat::from_stat64(stat))
   }).and_then(|ok| ok)
@@ -359,11 +348,14 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
     }
   }
 
-  let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-  let res = unsafe { libc::fstat64(fd, &mut stat) };
+  let mut stat: stat64 = unsafe { mem::zeroed() };
+  let res = unsafe { fstat64(fd, &mut stat) };
   Errno::result(res)?;
   Ok(ExtraStat::from_stat64(stat))
 }
+
+
+
 
 #[cfg(test)]
 mod tests {
