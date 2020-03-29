@@ -319,7 +319,7 @@ pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t)
 
 #[allow(dead_code)]
 pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
-  let p = CString::new("");
+  let p = CString::new("")?;
 
   cfg_has_statx! {
     if let Some(ret) = unsafe { try_statx(
@@ -328,7 +328,7 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
       libc::AT_STATX_SYNC_AS_STAT | libc::AT_EMPTY_PATH,
       libc::STATX_ALL,
     ) } {
-      return ret;
+      return ret.map_err(nix::Error::from);
     }
   }
 
