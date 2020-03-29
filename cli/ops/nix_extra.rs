@@ -162,7 +162,7 @@ pub struct ExtraStat {
   st_ctime: libc::time_t,
   st_ctime_nsec: ntime_t,
 */
-  stat: libc::stat64; // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
+  stat: libc::stat64, // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
   st_btime: libc::time_t,
   st_btime_nsec: ntime_t,
 }
@@ -261,12 +261,14 @@ cfg_has_statx! {{
     Some(Ok(ExtraStat { stat, st_btime = buf.stx_btime.tv_sec as libc::time_t, st_btime_nsec = buf.stx_btime.tv_nsec as ntime_t }))
 
   }
-} /* else {
+/*
+} else {
   #[derive(Clone)]
   pub struct FileAttr {
     stat: libc::stat64,
   }
-}} */
+*/
+}}
 
 cfg_has_statx! {{
   impl ExtraStat {
