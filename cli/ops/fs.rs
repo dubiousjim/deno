@@ -938,8 +938,8 @@ fn op_stat(
       let birthtime: i64 = filestat.st_birthtime;
       let json_val = json!({
         "isFile": sflag.contains(SFlag::S_IFREG),
-        "isDir": sflag.contains(SFlag::S_IFLNK),
-        "isSymlink": sflag.contains(SFlag::S_IFDIR),
+        "isDir": sflag.contains(SFlag::S_IFDIR),
+        "isSymlink": sflag.contains(SFlag::S_IFLNK),
         "size": filestat.st_size,
         // all times are i64
         "modified": filestat.st_mtime, // changed when fdatasync
