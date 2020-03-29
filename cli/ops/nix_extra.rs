@@ -10,6 +10,16 @@ use std::os::unix::io::RawFd;
 use libc::{gid_t, uid_t};
 use nix::unistd::{Gid, Uid};
 
+use std::ffi::{CString, CStr};
+use std::{ptr, mem};
+use libc::c_int;
+// `c_ulong` on gnu-mips, `dev_t` otherwise
+use libc::dev_t;
+// `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
+#[allow(non_camel_case_types)]
+type ntime_t = i64;
+
+
 /// Based on https://github.com/nix-rust/nix/pull/1134
 ///
 /// Checks the file named by `path` for accessibility according to the flags given by `mode`
@@ -60,35 +70,21 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
   Errno::result(res).map(drop)
 }
 
-//////////////////////
-
-//#[allow(unused_imports)]
-// use std::path::Path;
-use std::ffi::CString;
-use std::ffi::CStr;
-// #[allow(unused_imports)]
-// use std::os::unix::ffi::OsStrExt;
-// #[allow(unused_imports)]
-use std::ptr;
-use std::mem;
-use libc::c_int;
-
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 macro_rules! syscall {
-    (fn $name:ident($sysname:ident, $($arg_name:ident: $t:ty),*) -> $ret:ty) => (
-        unsafe fn $name($($arg_name:$t),*) -> $ret {
-            use libc::*;
-            syscall(
-                /* concat_idents!(SYS_, $name) */ $sysname,
-                $($arg_name as c_long),*
-            ) as $ret
-        }
-    )
+  (fn $name:ident($sysname:ident, $($arg_name:ident: $t:ty),*) -> $ret:ty) => (
+    unsafe fn $name($($arg_name:$t),*) -> $ret {
+      use libc::*;
+      syscall(
+        /* concat_idents!(SYS_, $name) */ $sysname,
+        $($arg_name as c_long),*
+      ) as $ret
+    }
+  )
 }
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
-
 /*
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
@@ -130,11 +126,11 @@ unsafe Errno::clear()
 Errno::result<N>(value: N) -> Result<N, nix::Error> // only use when -1 is the sentinel
 // where N is isize, i32, i64, *mut c_void, sighandler_t
 
-      if value == N::sentinel() {
-        Err(nix::Error::Sys(Self::last()))
-      } else {
-        Ok(value)
-      }
+   if value == N::sentinel() {
+     Err(nix::Error::Sys(Self::last()))
+   } else {
+     Ok(value)
+   }
 
 Nix enum Error {
   Sys(nix::errno::Errno),
@@ -149,33 +145,26 @@ Error::as_errno(self) -> Option<Errno>
 */
 
 
-
-// `statx` not exposed on musl and other libcs, see https://github.com/rust-lang/rust/pull/67774
+// `statx` not exposed on musl and other libcs
+// see https://github.com/rust-lang/rust/pull/67774
 macro_rules! cfg_has_statx {
-    ({ $($then_tt:tt)* } else { $($else_tt:tt)* }) => {
-        cfg_if::cfg_if! {
-            if #[cfg(all(target_os = "linux", target_env = "gnu"))] {
-                $($then_tt)*
-            } else {
-                $($else_tt)*
-            }
-        }
-    };
-    ($($block_inner:tt)*) => {
-        #[cfg(all(target_os = "linux", target_env = "gnu"))]
-        {
-            $($block_inner)*
-        }
-    };
+  ({ $($then_tt:tt)* } else { $($else_tt:tt)* }) => {
+     cfg_if::cfg_if! {
+       if #[cfg(all(target_os = "linux", target_env = "gnu"))] {
+         $($then_tt)*
+       } else {
+         $($else_tt)*
+       }
+     }
+  };
+  ($($block_inner:tt)*) => {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+         $($block_inner)*
+    }
+  };
 }
 
-
-// `c_ulong` on gnu-mips, `dev_t` otherwise
-use libc::dev_t;
-
-// `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
-#[allow(non_camel_case_types)]
-type ntime_t = i64;
 
 #[derive(Clone)]
 pub struct ExtraStat {
@@ -263,9 +252,7 @@ cfg_has_statx! {{
     let mut buf: libc::statx = mem::zeroed();
     let res = statx(fd, path, flags, mask, &mut buf);
     /*
-    if let Err(err) = Errno::result(res) {
-      return Some(Err(err));
-    }
+    if let Err(err) = Errno::result(res) { return Some(Err(err)); }
     */
     if res == -1 {
       return Some(Err(nix::Error::last()));
@@ -314,7 +301,6 @@ cfg_has_statx! {{
     }
   }
 }}
-
 
 fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
     where F: FnOnce(&CStr) -> Result<T> {
