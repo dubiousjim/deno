@@ -11,7 +11,8 @@ use libc::{gid_t, uid_t};
 use nix::unistd::{Gid, Uid};
 
 use libc::c_int;
-use std::ffi::{CStr, CString};
+// use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::{mem, ptr};
 // `c_ulong` on gnu-mips, `dev_t` otherwise
 use libc::dev_t;
