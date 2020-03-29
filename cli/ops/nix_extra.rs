@@ -1,24 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // These are functions that should/will be in the nix crate, but aren't yet in nix 0.17
 
-use nix::{NixPath, Result};
 use nix::errno::Errno;
 use nix::fcntl::AtFlags;
 use nix::unistd::AccessFlags;
+use nix::{NixPath, Result};
 use std::os::unix::io::RawFd;
 
 use libc::{gid_t, uid_t};
 use nix::unistd::{Gid, Uid};
 
-use std::ffi::{CString, CStr};
-use std::{ptr, mem};
 use libc::c_int;
+use std::ffi::{CStr, CString};
+use std::{mem, ptr};
 // `c_ulong` on gnu-mips, `dev_t` otherwise
 use libc::dev_t;
 // `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
 #[allow(non_camel_case_types)]
 type ntime_t = i64;
-
 
 /// Based on https://github.com/nix-rust/nix/pull/1134
 ///
@@ -144,7 +143,6 @@ Error::from_errno(Errno) -> new Sys(Errno)
 Error::as_errno(self) -> Option<Errno>
 */
 
-
 // `statx` not exposed on musl and other libcs
 // see https://github.com/rust-lang/rust/pull/67774
 macro_rules! cfg_has_statx {
@@ -165,27 +163,26 @@ macro_rules! cfg_has_statx {
   };
 }
 
-
 #[derive(Clone)]
 pub struct ExtraStat {
-/*
-  st_dev: dev_t,
-  st_ino: libc::ino64_t,
-  st_nlink: libc::nlink_t,
-  st_mode: libc::mode_t,
-  st_uid: libc::uid_t,
-  st_gid: libc::gid_t,
-  st_rdev: dev_t,
-  st_size: libc::off64_t,
-  st_blksize: libc::blksize_t,
-  st_blocks: libc::blkcnt64_t,
-  st_atime: libc::time_t,
-  st_atime_nsec: ntime_t,
-  st_mtime: libc::time_t,
-  st_mtime_nsec: ntime_t,
-  st_ctime: libc::time_t,
-  st_ctime_nsec: ntime_t,
-*/
+  /*
+    st_dev: dev_t,
+    st_ino: libc::ino64_t,
+    st_nlink: libc::nlink_t,
+    st_mode: libc::mode_t,
+    st_uid: libc::uid_t,
+    st_gid: libc::gid_t,
+    st_rdev: dev_t,
+    st_size: libc::off64_t,
+    st_blksize: libc::blksize_t,
+    st_blocks: libc::blkcnt64_t,
+    st_atime: libc::time_t,
+    st_atime_nsec: ntime_t,
+    st_mtime: libc::time_t,
+    st_mtime_nsec: ntime_t,
+    st_ctime: libc::time_t,
+    st_ctime_nsec: ntime_t,
+  */
   stat: libc::stat64, // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
   st_btime: libc::time_t,
   st_btime_nsec: ntime_t,
@@ -303,7 +300,9 @@ cfg_has_statx! {{
 }}
 
 fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
-    where F: FnOnce(&CStr) -> Result<T> {
+where
+  F: FnOnce(&CStr) -> Result<T>,
+{
   match p.with_nix_path(f) {
     Ok(res) => res,
     Err(e) => Err(e),
@@ -311,7 +310,11 @@ fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
 }
 
 #[allow(dead_code)]
-pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) ->Result<ExtraStat> {
+pub fn fstatat<P: ?Sized + NixPath>(
+  dirfd: Option<RawFd>,
+  path: &P,
+  nofollow: bool,
+) -> Result<ExtraStat> {
   result_nix_path(path, |cstr| {
     let flag = if nofollow {
       libc::AT_SYMLINK_NOFOLLOW
@@ -359,13 +362,10 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   Ok(ExtraStat::from_stat64(stat))
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use nix::fcntl::{open, OFlag, AtFlags};
+  use nix::fcntl::{open, AtFlags, OFlag};
   use nix::sys::stat::Mode;
   use nix::unistd::AccessFlags;
   use std::fs::File;
