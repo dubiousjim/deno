@@ -169,21 +169,6 @@ pub struct ExtraStat {
 
 // #[cfg(all(target_os = "linux", target_env = "gnu"))]
 cfg_has_statx! {{
-  /*
-  #[derive(Clone)]
-  pub struct FileAttr {
-    stat: libc::stat64,
-    statx_extra_fields: Option<StatxExtraFields>,
-  }
-
-  #[derive(Clone)]
-  struct StatxExtraFields {
-    // This is needed to check if btime is supported by the filesystem.
-    stx_mask: u32,
-    stx_btime: libc::statx_timestamp,
-  }
-  */
-
   // We prefer `statx` on Linux if available, which contains file creation time.
   // Default `stat64` contains no creation time.
   //#[allow(dead_code)]
