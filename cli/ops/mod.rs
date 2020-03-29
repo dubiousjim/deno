@@ -17,8 +17,6 @@ pub mod io;
 pub mod net;
 #[cfg(unix)]
 mod net_unix;
-#[cfg(unix)]
-mod nix_extra;
 pub mod os;
 pub mod permissions;
 pub mod plugins;
