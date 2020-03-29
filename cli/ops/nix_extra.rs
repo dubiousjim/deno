@@ -25,22 +25,21 @@ use libc::{fstatat64, fstat64, stat64};
 use libc::{fstatat as fstatat64, fstat as fstat64, stat as stat64};
 
 
-
 /*
 #[cfg(target_os = "l4re")]
 use libc::{fstat64};
 #[cfg(any(target_os = "linux", target_os = "emscripten", target_os = "l4re"))]
 use libc::{
-    stat64, lstat64, dirent64, lseek64, open64, ftruncate64, off64_t, readdir64_r,
+    lstat64, dirent64, lseek64, open64, ftruncate64, off64_t, readdir64_r,
 };
 #[cfg(target_os = "android")]
 use libc::{
-    stat as stat64, lstat as lstat64, dirent as dirent64, lseek64, open as open64,
+    lstat as lstat64, dirent as dirent64, lseek64, open as open64,
     // missing: ftruncate, off_t
 };
 #[cfg(not(any(target_os = "linux", target_os = "emscripten", target_os = "l4re", target_os = "android")))]
 use libc::{
-    stat as stat64, lstat as lstat64, dirent as dirent64, lseek as lseek64, open as open64, ftruncate as ftruncate64, off_t as off64_t,
+    lstat as lstat64, dirent as dirent64, lseek as lseek64, open as open64, ftruncate as ftruncate64, off_t as off64_t,
 };
 #[cfg(not(any(target_os = "linux", target_os = "emscripten", target_os = "l4re", target_os = "solaris", target_os = "fuchsia", target_os = "redox")))]
 use libc::readdir_r as readdir64_r;
@@ -212,7 +211,7 @@ pub struct ExtraStat {
     st_ctime: libc::time_t,
     st_ctime_nsec: ntime_t,
   */
-  stat: stat64, // nix::sys::stat::FileStat = libc::stat, which seems to be only nominally different
+  stat: stat64, // nix::sys::stat::FileStat = libc::stat/stat64
   st_btime: libc::time_t,
   st_btime_nsec: ntime_t,
 }
