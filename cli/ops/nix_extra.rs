@@ -46,8 +46,6 @@ pub fn faccessat<P: ?Sized + NixPath>(
 /// provided for that argument.  Ownership change will be attempted for the fd
 /// only if `Some` owner/group is provided.
 pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
-  // let (uid, gid) = chown_raw_ids(owner, group);
-
   // According to the POSIX specification, -1 is used to indicate that owner and group
   // are not to be changed.  Since uid_t and gid_t are unsigned types, we have to wrap
   // around to get -1.
@@ -59,7 +57,6 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
     .unwrap_or_else(|| (0 as gid_t).wrapping_sub(1));
 
   let res = unsafe { libc::fchown(fd, uid, gid) };
-
   Errno::result(res).map(drop)
 }
 
@@ -72,10 +69,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::ptr;
 use std::mem;
 use libc::c_int;
-
-fn cstr(path: &Path) -> std::io::Result<CString> {
-    Ok(CString::new(path.as_os_str().as_bytes())?)
-}
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/weak.rs
 #[cfg(target_os = "linux")]
@@ -137,6 +130,7 @@ macro_rules! cfg_has_statx {
 use libc::dev_t;
 
 // `i64` on gnu-x86_64-x32, `c_ulong`/`c_long` otherwise.
+#[allow(non_camel_case_types)]
 type ntime_t = i64;
 
 #[derive(Clone)]
@@ -264,9 +258,38 @@ cfg_has_statx! {{
   }
 }}
 
+
+
+
+
+
+
+
+
+
+fn cstr(path: &Path) -> std::io::Result<CString> {
+    Ok(CString::new(path.as_os_str().as_bytes())?)
+}
+
+
 #[allow(dead_code)]
-pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<ExtraStat> {
-// pub fn my_fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<ExtraStat> {
+// pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bool) -> std::io::Result<ExtraStat> {
+pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> std::io::Result<ExtraStat> {
+
+/*
+pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t) -> Result<()> {
+    let res = path.with_nix_path(|cstr| {
+        unsafe {
+            libc::mknod(cstr.as_ptr(), kind.bits | perm.bits() as mode_t, dev)
+        }
+    })?;
+
+    Errno::result(res).map(drop)
+}
+*/
+
+  // let res = path.with_nix_path(|cstr| {
+
   let p = cstr(path)?;
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
@@ -290,6 +313,7 @@ pub fn fstatat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, nofollow: bo
   cvt(unsafe { libc::fstatat64(fd, p.as_ptr(), &mut stat, flag) })?;
   Ok(ExtraStat::from_stat64(stat))
 }
+
 
 #[allow(dead_code)]
 pub fn fstat(fd: RawFd) -> std::io::Result<ExtraStat> {
