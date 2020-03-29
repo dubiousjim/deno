@@ -62,8 +62,10 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 
 //////////////////////
 
+#[allow(unused_imports)]
 use std::path::Path;
 use std::ffi::CString;
+#[allow(unused_imports)]
 use std::os::unix::ffi::OsStrExt;
 #[allow(unused_imports)]
 use std::ptr;
