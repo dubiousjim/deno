@@ -216,8 +216,8 @@ pub struct ExtraStat {
     st_ctime_nsec: ntime_t,
   */
   pub stat: stat64, // nix::sys::stat::FileStat = libc::stat/stat64
-  st_btime: libc::time_t,
-  st_btime_nsec: ntime_t,
+  pub st_btime: libc::time_t,
+  pub st_btime_nsec: ntime_t,
 }
 
 cfg_has_statx! {{
