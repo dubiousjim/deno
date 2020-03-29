@@ -23,7 +23,7 @@ import {
 export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
 import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { chown, chownSync } from "./ops/fs/chown.ts";
-import { chdir } from "./ops/fs/dir.ts"; /// FIXME
+import { chdir } from "./ops/fs/dir.ts"; /// FIXME(jp) shouldn't be on File
 import { stat, statSync } from "./ops/fs/stat.ts";
 import { FileInfo } from "./file_info.ts";
 import { sync, datasync } from "./ops/fs/sync.ts";
@@ -152,7 +152,7 @@ export class File
   }
 
   chdir(): void {
-    // FIXME
+    // FIXME(jp) shouldn't be on File
     return chdir(this.rid);
   }
 

@@ -698,7 +698,7 @@ declare namespace Deno {
     chmodSync(mode: number): void;
     chown(uid?: number, gid?: number): Promise<void>;
     chownSync(uid?: number, gid?: number): void;
-    chdir(): void; // FIXME
+    chdir(): void; // FIXME(jp) shouldn't be on File
     utime(atime: number | Date, mtime: number | Date): Promise<void>;
     utimeSync(atime: number | Date, mtime: number | Date): void;
     stat(): Promise<FileInfo>;
