@@ -321,7 +321,7 @@ fn cstr(path: &Path) -> std::io::Result<CString> {
 }
 */
 
-fn result_nix_path<P: NixPath, T, F>(_p: P, _f: F) -> Result<T>
+fn result_nix_path<P: NixPath, T, F>(_p: &P, _f: F) -> Result<T>
     where F: FnOnce(&CStr) -> T {
   Err(nix::Error::last()) // FIXME
 }
