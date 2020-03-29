@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // These are functions that should/will be in the nix crate, but aren't yet in nix 0.17
 
+use nix::{NixPath, Result};
 use nix::errno::Errno;
 use nix::fcntl::AtFlags;
 use nix::unistd::AccessFlags;
-use nix::{NixPath, Result};
 use std::os::unix::io::RawFd;
 
 use libc::{gid_t, uid_t};
@@ -91,8 +91,7 @@ macro_rules! syscall {
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
 
-
-
+/*
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;
 }
@@ -115,6 +114,7 @@ fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
 fn nix_cvt<T: IsMinusOne>(t: T) -> Result<T> {
   if t.is_minus_one() { Err(nix::Error::last()) } else { Ok(t) }
 }
+*/
 
 /* Nix pattern is
   // -> Result<()> {
@@ -241,13 +241,14 @@ cfg_has_statx! {{
         // is available. According to the manual, it is expected to fail with EFAULT.
         // We do this mainly for performance, since it is nearly hundreds times
         // faster than a normal successful call.
-        let err = nix_cvt(statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut()))
+        let res = statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut());
+        let err = Errno::result(res)
           .err() // Result<T, E> -> Option<E>
           .and_then(|e| /*e.raw_os_error()*/ e.as_errno());
         // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
         // and returns `EPERM`. Listing all possible errors seems not a good idea.
         // See: https://github.com/rust-lang/rust/issues/65662
-        if err != Some(/*libc::EFAULT*/ nix::errno::Errno::EFAULT) {
+        if err != Some(/*libc::EFAULT*/ Errno::EFAULT) {
           STATX_STATE.store(1, Ordering::Relaxed);
           return None;
         }
@@ -258,7 +259,8 @@ cfg_has_statx! {{
     }
 
     let mut buf: libc::statx = mem::zeroed();
-    if let Err(err) = nix_cvt(statx(fd, path, flags, mask, &mut buf)) {
+    let res = statx(fd, path, flags, mask, &mut buf);
+    if let Err(err) = Errno::result(res) {
       return Some(Err(err));
     }
 
@@ -381,7 +383,8 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   }
 
   let mut stat: libc::stat64 = unsafe { mem::zeroed() };
-  nix_cvt(unsafe { libc::fstat64(fd, &mut stat) })?;
+  let res = unsafe { libc::fstat64(fd, &mut stat) };
+  Errno::result(res)?;
   Ok(ExtraStat::from_stat64(stat))
 }
 
@@ -391,14 +394,13 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use nix::fcntl::{open, OFlag};
+  use nix::fcntl::{open, OFlag, AtFlags};
   use nix::sys::stat::Mode;
   use nix::unistd::AccessFlags;
   use std::fs::File;
 
   #[test]
   fn test_faccessat_none_not_existing() {
-    use nix::fcntl::AtFlags;
     let tempdir = tempfile::tempdir().unwrap();
     let dir = tempdir.path().join("does_not_exist.txt");
     assert_eq!(
@@ -413,7 +415,6 @@ mod tests {
 
   #[test]
   fn test_faccessat_not_existing() {
-    use nix::fcntl::AtFlags;
     let tempdir = tempfile::tempdir().unwrap();
     let dirfd = open(tempdir.path(), OFlag::empty(), Mode::empty()).unwrap();
     let not_exist_file = "does_not_exist.txt";
@@ -434,7 +435,6 @@ mod tests {
 
   #[test]
   fn test_faccessat_none_file_exists() {
-    use nix::fcntl::AtFlags;
     let tempdir = tempfile::tempdir().unwrap();
     let path = tempdir.path().join("does_exist.txt");
     let _file = File::create(path.clone()).unwrap();
@@ -449,7 +449,6 @@ mod tests {
 
   #[test]
   fn test_faccessat_file_exists() {
-    use nix::fcntl::AtFlags;
     let tempdir = tempfile::tempdir().unwrap();
     let dirfd = open(tempdir.path(), OFlag::empty(), Mode::empty()).unwrap();
     let exist_file = "does_exist.txt";
@@ -467,7 +466,6 @@ mod tests {
   #[test]
   fn test_fchown() {
     use std::os::unix::io::AsRawFd;
-    // let _dr = ::DirRestore::new();
     // Testing for anything other than our own UID/GID is hard.
     let uid = Some(nix::unistd::getuid());
     let gid = Some(nix::unistd::getgid());
@@ -481,7 +479,6 @@ mod tests {
     fchown(fd, uid, gid).unwrap();
     fchown(fd, uid, None).unwrap();
     fchown(fd, None, gid).unwrap();
-
     // std::fs::remove_file(&path).unwrap();
   }
 }
