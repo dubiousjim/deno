@@ -5,7 +5,8 @@ use nix::errno::Errno;
 use nix::fcntl::AtFlags;
 use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
-#[allow(unused_imports)]
+use std::path::Path;
+// #[allow(unused_imports)]
 use std::ffi::CString;
 use std::mem;
 use std::os::unix::io::RawFd;
@@ -385,8 +386,10 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   Ok(ExtraStat::from_stat64(stat))
 }
 
-fn cstr(path: &Path) -> std::io::Result<CString> {
-  Ok(CString::new(path.as_os_str().as_bytes())?)
+fn cstr(path: &Path) -> Result<CString> {
+  match CString::new(path.as_os_str().as_bytes()) {
+    Ok(cstr) => Ok(cstr),
+    Err(_) => Err(nix::Error::InvalidUtf8),
 }
 
 #[allow(dead_code)]
