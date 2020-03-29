@@ -62,13 +62,13 @@ pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
 
 //////////////////////
 
-#[allow(unused_imports)]
-use std::path::Path;
+//#[allow(unused_imports)]
+// use std::path::Path;
 use std::ffi::CString;
 use std::ffi::CStr;
-#[allow(unused_imports)]
-use std::os::unix::ffi::OsStrExt;
-#[allow(unused_imports)]
+// #[allow(unused_imports)]
+// use std::os::unix::ffi::OsStrExt;
+// #[allow(unused_imports)]
 use std::ptr;
 use std::mem;
 use libc::c_int;
@@ -90,6 +90,10 @@ macro_rules! syscall {
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
 
 /*
+fn cstr(path: &Path) -> std::io::Result<CString> {
+    Ok(CString::new(path.as_os_str().as_bytes())?)
+}
+
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;
 }
@@ -311,12 +315,6 @@ cfg_has_statx! {{
   }
 }}
 
-
-/*
-fn cstr(path: &Path) -> std::io::Result<CString> {
-    Ok(CString::new(path.as_os_str().as_bytes())?)
-}
-*/
 
 fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
     where F: FnOnce(&CStr) -> Result<T> {
