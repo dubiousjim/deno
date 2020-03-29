@@ -336,7 +336,7 @@ pub fn fstatat(dirfd: Option<RawFd>, path: &Path, nofollow: bool) -> Result<Extr
 
   // let res = path.with_nix_path(|cstr| {
 
-  let p = cstr(path)?;
+  let p = cstr(path).unwrap();
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
   } else {
