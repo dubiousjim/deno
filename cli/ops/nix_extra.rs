@@ -79,9 +79,7 @@ macro_rules! syscall {
         unsafe fn $name($($arg_name:$t),*) -> $ret {
             use libc::*;
             syscall(
-                // concat_idents only accepts idents (not paths).
-                // concat_idents!(SYS_, $name),
-                $sysname,
+                /* concat_idents!(SYS_, $name) */ $sysname,
                 $($arg_name as c_long),*
             ) as $ret
         }
@@ -89,7 +87,6 @@ macro_rules! syscall {
 }
 
 /// Based on https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/fs.rs
-
 
 /*
 trait IsMinusOne {
@@ -106,51 +103,45 @@ macro_rules! impl_is_minus_one {
 
 impl_is_minus_one! { i32 } // i8 i16 i64 isize
 
+// same as nix::Errno::result(t), except for Err type
 fn cvt<T: IsMinusOne>(t: T) -> std::io::Result<T> {
   if t.is_minus_one() { Err(std::io::Error::last_os_error()) } else { Ok(t) }
 }
 
-// should be same as nix::Errno::result(t)
-fn nix_cvt<T: IsMinusOne>(t: T) -> Result<T> {
-  if t.is_minus_one() { Err(nix::Error::last()) } else { Ok(t) }
+// Nix pattern is
+// -> Result<()> {
+  let res = path.with_nix_path(|cstr| {
+    unsafe {
+      libc::blah(cstr.as_ptr(), ...) // -> -1
+    }
+  })?;
+  Errno::result(res).map(drop) // drop: N -> ()
 }
-*/
 
-/* Nix pattern is
-  // -> Result<()> {
-    let res = path.with_nix_path(|cstr| {
-      unsafe {
-        libc::blah(cstr.as_ptr(), ...) // -> -1
+Errno::last() -> Self
+Errno::from_i32(i32) -> Self
+Errno::desc(self) -> &str
+unsafe Errno::clear()
+Errno::result<N>(value: N) -> Result<N, nix::Error> // only use when -1 is the sentinel
+// where N is isize, i32, i64, *mut c_void, sighandler_t
+
+      if value == N::sentinel() {
+        Err(nix::Error::Sys(Self::last()))
+      } else {
+        Ok(value)
       }
-    })?;
-    Errno::result(res).map(drop)
-  }
 
-  Nix Errno
-  Errno::last() -> Self
-  Errno::from_i32(i32) -> Self
-  Errno::desc(self) -> &str
-  unsafe Errno::clear()
-  Errno::result<N>(value: N) -> Result<N, nix::Error> // only use when -1 is the sentinel
-  // where N is isize, i32, i64, *mut c_void, sighandler_t
-
-        if value == N::sentinel() {
-          Err(nix::Error::Sys(Self::last()))
-        } else {
-          Ok(value)
-        }
-
-  Nix enum Error {
-    Sys(nix::errno::Errno),
-    InvalidPath,
-    InvalidUtf8,
-    UnsupportedOperation
-  }
-  Error::last() -> new Sys(current Errno)
-  Errno::invalid_argument() -> new Sys(EINVAL)
-  Error::from_errno(Errno) -> new Sys(Errno)
-  Error::as_errno(self) -> Option<Errno>
- */
+Nix enum Error {
+  Sys(nix::errno::Errno),
+  InvalidPath,
+  InvalidUtf8,
+  UnsupportedOperation
+}
+Error::last() -> new Sys(current Errno)
+Errno::invalid_argument() -> new Sys(EINVAL)
+Error::from_errno(Errno) -> new Sys(Errno)
+Error::as_errno(self) -> Option<Errno>
+*/
 
 
 
@@ -172,7 +163,6 @@ macro_rules! cfg_has_statx {
         }
     };
 }
-
 
 
 // `c_ulong` on gnu-mips, `dev_t` otherwise
@@ -242,13 +232,20 @@ cfg_has_statx! {{
         // We do this mainly for performance, since it is nearly hundreds times
         // faster than a normal successful call.
         let res = statx(0, ptr::null(), 0, libc::STATX_ALL, ptr::null_mut());
+        /*
         let err = Errno::result(res)
           .err() // Result<T, E> -> Option<E>
-          .and_then(|e| /*e.raw_os_error()*/ e.as_errno());
-        // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
+          .and_then(|e| e.as_errno());
+        */
+        let err = if res == -1 {
+          Some(Errno::last())
+        } else {
+          None
+        };
+        // We don't check `err == Some(ENOSYS)` because the syscall may be limited
         // and returns `EPERM`. Listing all possible errors seems not a good idea.
         // See: https://github.com/rust-lang/rust/issues/65662
-        if err != Some(/*libc::EFAULT*/ Errno::EFAULT) {
+        if err != Some(Errno::EFAULT) {
           STATX_STATE.store(1, Ordering::Relaxed);
           return None;
         }
@@ -260,8 +257,13 @@ cfg_has_statx! {{
 
     let mut buf: libc::statx = mem::zeroed();
     let res = statx(fd, path, flags, mask, &mut buf);
+    /*
     if let Err(err) = Errno::result(res) {
       return Some(Err(err));
+    }
+    */
+    if res == -1 {
+      return Some(Err(nix::Error::last()));
     }
 
     // We cannot fill `stat64` exhaustively because of private padding fields.
