@@ -312,18 +312,18 @@ cfg_has_statx! {{
 }}
 
 
-
-
-
 /*
 fn cstr(path: &Path) -> std::io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
 */
 
-fn result_nix_path<P: ?Sized + NixPath, T, F>(_p: &P, _f: F) -> Result<T>
+fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
     where F: FnOnce(&CStr) -> Result<T> {
-  Err(nix::Error::last()) // FIXME
+  match p.with_nix_path(f) {
+    Ok(res) => res,
+    Err(e) => Err(e),
+  }
 }
 
 #[allow(dead_code)]
