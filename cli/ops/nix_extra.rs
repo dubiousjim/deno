@@ -299,6 +299,7 @@ cfg_has_statx! {{
   }
 }}
 
+/*
 fn result_nix_path<P: ?Sized + NixPath, T, F>(p: &P, f: F) -> Result<T>
 where
   F: FnOnce(&CStr) -> Result<T>,
@@ -308,6 +309,7 @@ where
     Err(e) => Err(e),
   }
 }
+*/
 
 #[allow(dead_code)]
 pub fn fstatat<P: ?Sized + NixPath>(
@@ -315,7 +317,7 @@ pub fn fstatat<P: ?Sized + NixPath>(
   path: &P,
   nofollow: bool,
 ) -> Result<ExtraStat> {
-  result_nix_path(path, |cstr| {
+  path.with_nix_path(|cstr| {
     let flag = if nofollow {
       libc::AT_SYMLINK_NOFOLLOW
     } else {
@@ -338,7 +340,7 @@ pub fn fstatat<P: ?Sized + NixPath>(
     let res = unsafe { libc::fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
     Errno::result(res)?;
     Ok(ExtraStat::from_stat64(stat))
-  })
+  }).and_then(|ok| ok)
 }
 
 #[allow(dead_code)]
