@@ -245,7 +245,7 @@ cfg_has_statx! {{
         // We don't check `err == Some(libc::ENOSYS)` because the syscall may be limited
         // and returns `EPERM`. Listing all possible errors seems not a good idea.
         // See: https://github.com/rust-lang/rust/issues/65662
-        if err != Some(libc::EFAULT) {
+        if err != Some(/*libc::EFAULT*/ nix::errno::Errno::EFAULT) {
           STATX_STATE.store(1, Ordering::Relaxed);
           return None;
         }
@@ -257,7 +257,7 @@ cfg_has_statx! {{
 
     let mut buf: libc::statx = mem::zeroed();
     if let Err(err) = nix_cvt(statx(fd, path, flags, mask, &mut buf)) {
-      return Some(Err(err)); // FIXME
+      return Some(Err(err));
     }
 
     // We cannot fill `stat64` exhaustively because of private padding fields.
@@ -365,7 +365,7 @@ pub fn mknod<P: ?Sized + NixPath>(path: &P, kind: SFlag, perm: Mode, dev: dev_t)
 
 #[allow(dead_code)]
 pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
-  let p = CString::new("")?;
+  let p = CString::new("").unwrap();
 
   cfg_has_statx! {
     if let Some(ret) = unsafe { try_statx(
