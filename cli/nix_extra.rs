@@ -517,8 +517,8 @@ pub fn unlinkat<P: ?Sized + NixPath>(
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   let mut dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
-  let curdir_name = CString::new(".")?.as_c_str();
-  let pardir_name = CString::new("..")?.as_c_str();
+  let curdir_name = CString::new(".").unwrap().as_c_str();
+  let pardir_name = CString::new("..").unwrap().as_c_str();
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
