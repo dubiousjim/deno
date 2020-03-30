@@ -1202,9 +1202,9 @@ fn op_rename(
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
     {
-      use nix::fnctl::renameat;
-      let oldfd = atdir.map(|dir| dir.as_raw_fd());
-      let newfd = atdir.map(|dir| dir.as_raw_fd());
+      use nix::fcntl::renameat;
+      let oldfd = oldatdir.map(|dir| dir.as_raw_fd());
+      let newfd = newatdir.map(|dir| dir.as_raw_fd());
       if create_new {
         // like `mv -Tn`, we don't follow symlinks
         let old_meta = std::fs::symlink_metadata(&oldpath)?;
