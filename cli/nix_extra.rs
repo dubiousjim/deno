@@ -469,14 +469,13 @@ pub fn unlinkat<P: ?Sized + NixPath>(
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   use std::os::unix::io::AsRawFd;
-  dbg!("mark2", path);
+  eprintln!(">>> starting unlink_all({}, {:?})", fd, &path);
   let mut dir =
     nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
   let dirfd = dir.as_raw_fd();
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
-    dbg!("mark3a", child_name);
     let child_str = match child_name.to_str() {
       Ok(s) => s,
       Err(_) => return Err(nix::Error::InvalidUtf8),
@@ -488,7 +487,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
         Some(_) => false,
         None => filetypeat(fd, child_name, true)? == libc::S_IFDIR,
       };
-      dbg!("mark3b", child_name, is_dir);
+      eprintln!("    child({}, {:?}, {})", fd, &child_name, is_dir);
       if is_dir {
         _unlinkat_all(dirfd, child_name)?;
       } else {
@@ -500,7 +499,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       }
     }
   }
-  dbg!("mark4", path);
+  eprintln!("<<< ending unlink_all({}, {:?})", fd, &path);
   let atflag = AtFlags::AT_REMOVEDIR;
   let res =
     unsafe { libc::unlinkat(fd, path.as_ptr(), atflag.bits() as libc::c_int) };

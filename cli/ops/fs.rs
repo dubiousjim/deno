@@ -772,7 +772,6 @@ fn op_remove(
       let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
         UnlinkatFlags::NoRemoveDir
       } else if recursive {
-        dbg!("mark1", &path);
         UnlinkatFlags::RemoveDirAll
       } else {
         UnlinkatFlags::RemoveDir
@@ -1139,7 +1138,8 @@ struct RenameArgs {
   oldpath: String,
   newpath: String,
   create_new: bool,
-  atrid: Option<i32>,
+  oldatrid: Option<i32>,
+  newatrid: Option<i32>,
 }
 
 fn op_rename(
@@ -1160,12 +1160,12 @@ fn op_rename(
     state.check_read(&newpath)?;
   }
 
-  let atdir = match args.atrid {
-    Some(atrid) if cfg!(unix) => {
+  let oldatdir = match args.oldatrid {
+    Some(oldatrid) if cfg!(unix) => {
       let state = state.borrow();
       let resource_holder = state
         .resource_table
-        .get::<StreamResourceHolder>(atrid as u32)
+        .get::<StreamResourceHolder>(oldatrid as u32)
         .ok_or_else(OpError::bad_resource_id)?;
 
       let tokio_dir = match resource_holder.resource {
@@ -1177,8 +1177,28 @@ fn op_rename(
     Some(_) => return Err(OpError::not_implemented()),
     None => None,
   };
+
+  let newatdir = match args.newatrid {
+    Some(newatrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(newatrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
   // TODO(jp5) rename (complex)
-  let _ = atdir; // avoid unused warning
+  let _ = oldatdir; // avoid unused warning
+  let _ = newatdir;
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
