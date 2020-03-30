@@ -760,7 +760,7 @@ fn op_remove(
     {
       use crate::nix_extra::{cstr, unlinkat, UnlinkatFlags, filetypeat};
       let fd = match atdir {
-        Some(dir) => dir.as_faw_fd(),
+        Some(dir) => dir.as_raw_fd(),
         None => libc::AT_FDCWD,
       };
       let cpath = cstr(&path)?;
@@ -771,7 +771,7 @@ fn op_remove(
       } else {
         UnlinkatFlags::RemoveDir
       };
-      unlinkat(fd, &path, flag)?;
+      unlinkat(Some(fd), &path, flag)?;
     }
     #[cfg(not(unix))]
     {
