@@ -388,33 +388,21 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   Ok(ExtraStat::from_stat64(stat))
 }
 
-impl From<std::str::Utf8Error> for nix::Error {
-  fn from(error: std::str::Utf8Error) -> Self {
-    nix::Error::InvalidUtf8
-  }
-}
-
 fn cstr(path: &Path) -> Result<CString> {
   use std::os::unix::ffi::OsStrExt;
-  /*
   match CString::new(path.as_os_str().as_bytes()) {
     Ok(cstr) => Ok(cstr),
     Err(_) => Err(nix::Error::InvalidUtf8),
   }
-  */
-  Ok(CString::new(path.as_os_str().as_bytes())?)
 }
 
 #[allow(dead_code)]
 pub fn mkdirat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, mode: Mode, recursive: bool) -> Result<()> {
   path.with_nix_path(|cstr| {
-    /*
     let path = match cstr.to_str() {
       Ok(s) => Path::new(s),
       Err(_) => return Err(nix::Error::InvalidUtf8),
     };
-    */
-    let path = Path::new(cstr.to_str()?);
     match dirfd {
       Some(fd) => _mkdirat(fd, path.as_ref(), mode.bits() as mode_t, recursive),
       None => _mkdir(path.as_ref(), mode.bits() as mode_t, recursive),
@@ -537,7 +525,10 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
-    let child_str = child_name.to_str()?;
+    let child_str = match child_name.to_str() {
+      Ok(s) => s,
+      Err(_) => return Err(nix::Error::InvalidUtf8),
+    };
     // docs for nix::dir::Entry say "Note that unlike the std version, this may represent the . or .. entries."
     if child_str != "." && child_str != ".." {
       let is_dir = match child.file_type() {
