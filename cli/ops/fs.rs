@@ -1214,13 +1214,11 @@ fn op_rename(
           // on Unix, mv from dir to file always fails, but to emptydir is ok
           std::fs::create_dir(&newpath)?;
         } else {
-          /*
           let mut open_options = std::fs::OpenOptions::new();
           open_options.write(true).create_new(true);
           if let Err(e) = open_options.open(&newpath) {
             return Err(OpError::from(e));
           }
-          */
         }
       }
       std::fs::rename(&oldpath, &newpath)?;

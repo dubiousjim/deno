@@ -469,7 +469,6 @@ pub fn unlinkat<P: ?Sized + NixPath>(
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   use std::os::unix::io::AsRawFd;
-  eprintln!(">>> starting unlink_all({}, {:?})", fd, &path);
   let mut dir =
     nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
   let dirfd = dir.as_raw_fd();
@@ -487,7 +486,6 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
         Some(_) => false,
         None => filetypeat(dirfd, child_name, true)? == libc::S_IFDIR,
       };
-      eprintln!("    child({}, {:?}, {})", fd, &child_name, is_dir);
       if is_dir {
         _unlinkat_all(dirfd, child_name)?;
       } else {
@@ -499,7 +497,6 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       }
     }
   }
-  eprintln!("<<< ending unlink_all({}, {:?})", fd, &path);
   let atflag = AtFlags::AT_REMOVEDIR;
   let res =
     unsafe { libc::unlinkat(fd, path.as_ptr(), atflag.bits() as libc::c_int) };
