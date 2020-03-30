@@ -5,10 +5,10 @@ use nix::errno::Errno;
 use nix::fcntl::{AtFlags, OFlag};
 use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
-use std::path::Path;
-use std::ffi::{CString, CStr};
+use std::ffi::{CStr, CString};
 use std::mem;
 use std::os::unix::io::RawFd;
+use std::path::Path;
 #[allow(unused_imports)]
 use std::ptr;
 
@@ -307,10 +307,9 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   Ok(ExtraStat::from_stat64(stat))
 }
 
-
 // utility to query only the high bits of st_mode
 #[allow(dead_code)]
-pub fn filetypeat(fd: RawFd, path: &CStr, nofollow:bool) -> Result<mode_t> {
+pub fn filetypeat(fd: RawFd, path: &CStr, nofollow: bool) -> Result<mode_t> {
   let flag = if nofollow {
     libc::AT_SYMLINK_NOFOLLOW
   } else {
@@ -321,7 +320,6 @@ pub fn filetypeat(fd: RawFd, path: &CStr, nofollow:bool) -> Result<mode_t> {
   Errno::result(res)?;
   Ok(stat.st_mode & libc::S_IFMT)
 }
-
 
 fn cstr(path: &Path) -> Result<CString> {
   use std::os::unix::ffi::OsStrExt;
@@ -335,21 +333,34 @@ fn cstr(path: &Path) -> Result<CString> {
 // and https://github.com/nix-rust/nix/blob/master/src/sys/stat.rs
 
 #[allow(dead_code)]
-pub fn mkdirat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, mode: Mode, recursive: bool) -> Result<()> {
-  path.with_nix_path(|cstr| {
-    let path = match cstr.to_str() {
-      Ok(s) => Path::new(s),
-      Err(_) => return Err(nix::Error::InvalidUtf8),
-    };
-    match dirfd {
-      Some(fd) => _mkdirat(fd, path.as_ref(), mode.bits() as mode_t, recursive),
-      None => _mkdir(path.as_ref(), mode.bits() as mode_t, recursive),
-    }
-  })
-  .and_then(|ok| ok)
+pub fn mkdirat<P: ?Sized + NixPath>(
+  dirfd: Option<RawFd>,
+  path: &P,
+  mode: Mode,
+  recursive: bool,
+) -> Result<()> {
+  path
+    .with_nix_path(|cstr| {
+      let path = match cstr.to_str() {
+        Ok(s) => Path::new(s),
+        Err(_) => return Err(nix::Error::InvalidUtf8),
+      };
+      match dirfd {
+        Some(fd) => {
+          _mkdirat(fd, path.as_ref(), mode.bits() as mode_t, recursive)
+        }
+        None => _mkdir(path.as_ref(), mode.bits() as mode_t, recursive),
+      }
+    })
+    .and_then(|ok| ok)
 }
 
-fn _mkdirat(fd: RawFd, path: &Path, mode: mode_t, recursive: bool) -> Result<()> {
+fn _mkdirat(
+  fd: RawFd,
+  path: &Path,
+  mode: mode_t,
+  recursive: bool,
+) -> Result<()> {
   if recursive {
     _mkdirat_all(fd, path, mode)
   } else {
@@ -372,7 +383,9 @@ fn _mkdirat_all(fd: RawFd, path: &Path, mode: mode_t) -> Result<()> {
   match path.parent() {
     Some(p) => _mkdirat_all(fd, p, 0o777)?,
     // failed to create whole tree
-    None => { return Err(nix::Error::Sys(nix::errno::Errno::EACCES)); },
+    None => {
+      return Err(nix::Error::Sys(nix::errno::Errno::EACCES));
+    }
   }
   match _mkdirat(fd, path, mode, false) {
     Ok(()) => Ok(()),
@@ -404,7 +417,9 @@ fn _mkdir_all(path: &Path, mode: mode_t) -> Result<()> {
   match path.parent() {
     Some(p) => _mkdir_all(p, 0o777)?,
     // failed to create whole tree
-    None => { return Err(nix::Error::Sys(nix::errno::Errno::EACCES)); },
+    None => {
+      return Err(nix::Error::Sys(nix::errno::Errno::EACCES));
+    }
   }
   match _mkdir(path, mode, false) {
     Ok(()) => Ok(()),
@@ -431,28 +446,30 @@ pub fn unlinkat<P: ?Sized + NixPath>(
   flag: UnlinkatFlags,
 ) -> Result<()> {
   let fd = dirfd.unwrap_or(libc::AT_FDCWD);
-  path.with_nix_path(|cstr| {
-    let atflag = match flag {
-      UnlinkatFlags::RemoveDirAll => {
-        if filetypeat(fd, cstr, true)? == libc::S_IFDIR {
-          return _unlinkat_all(fd, cstr)
-        } else {
-          AtFlags::empty()
+  path
+    .with_nix_path(|cstr| {
+      let atflag = match flag {
+        UnlinkatFlags::RemoveDirAll => {
+          if filetypeat(fd, cstr, true)? == libc::S_IFDIR {
+            return _unlinkat_all(fd, cstr);
+          } else {
+            AtFlags::empty()
+          }
         }
-      }
-      UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
-      UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
-    };
-    let res = unsafe {
-      libc::unlinkat(fd, cstr.as_ptr(), atflag.bits() as libc::c_int)
-    };
-    Errno::result(res).map(drop)
-  })
-  .and_then(|ok| ok)
+        UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
+        UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
+      };
+      let res = unsafe {
+        libc::unlinkat(fd, cstr.as_ptr(), atflag.bits() as libc::c_int)
+      };
+      Errno::result(res).map(drop)
+    })
+    .and_then(|ok| ok)
 }
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
-  let mut dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
+  let mut dir =
+    nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
@@ -479,13 +496,10 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
     }
   }
   let atflag = AtFlags::AT_REMOVEDIR;
-  let res = unsafe {
-    libc::unlinkat(fd, path.as_ptr(), atflag.bits() as libc::c_int)
-  };
+  let res =
+    unsafe { libc::unlinkat(fd, path.as_ptr(), atflag.bits() as libc::c_int) };
   Errno::result(res).map(drop)
 }
-
-
 
 #[cfg(test)]
 mod tests {
