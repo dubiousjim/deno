@@ -346,9 +346,7 @@ pub fn mkdirat<P: ?Sized + NixPath>(
         Err(_) => return Err(nix::Error::InvalidUtf8),
       };
       match dirfd {
-        Some(fd) => {
-          _mkdirat(fd, path, mode.bits() as mode_t, recursive)
-        }
+        Some(fd) => _mkdirat(fd, path, mode.bits() as mode_t, recursive),
         None => _mkdir(path, mode.bits() as mode_t, recursive),
       }
     })
