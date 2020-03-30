@@ -419,9 +419,28 @@ fn _mkdirat(fd: RawFd, path: &Path, mode: mode_t, recursive: bool) -> Result<()>
   }
 }
 
-fn _mkdirat_all(_fd: RawFd, _path: &Path, _mode: mode_t) -> Result<()> {
-  // FIXME
-  Ok(())
+fn _mkdirat_all(fd: RawFd, path: &Path, mode: mode_t) -> Result<()> {
+  if path == Path::new("") {
+    return Ok(());
+  }
+  match _mkdirat(fd, path, mode, false) {
+    Ok(()) => return Ok(()),
+    // Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    // Err(ref e) if e == nix::Error::Sys(nix::errno::Errno::ENOENT) => {}
+    Err(ref e) if e.as_errno() == Some(nix::errno::Errno::ENOENT) => {}
+    Err(_) if path.is_dir() => return Ok(()),
+    Err(e) => return Err(e),
+  }
+  match path.parent() {
+    Some(p) => _mkdirat_all(fd, p, 0o777)?,
+    // None => { return Err(std::io::Error::new(std::io::ErrorKind::Other, "failed to create whole tree")); }
+    None => { return Err(nix::Error::Sys(nix::errno::Errno::EACCES)); },
+  }
+  match _mkdirat(fd, path, mode, false) {
+    Ok(()) => Ok(()),
+    Err(_) if path.is_dir() => Ok(()),
+    Err(e) => Err(e),
+  }
 }
 
 fn _mkdir(path: &Path, mode: mode_t, recursive: bool) -> Result<()> {
@@ -458,6 +477,68 @@ fn _mkdir_all(path: &Path, mode: mode_t) -> Result<()> {
   }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum UnlinkatFlags {
+    RemoveDirAll,
+    RemoveDir,
+    NoRemoveDir,
+}
+
+pub fn unlinkat<P: ?Sized + NixPath>(
+    dirfd: Option<RawFd>,
+    path: &P,
+    flag: UnlinkatFlags,
+) -> Result<()> {
+    let fd = dirfd.unwrap_or(libc::AT_FDCWD);
+    path.wirh_nix_path(|cstr| {
+      let atflag = match flag {
+        UnlinkatFlags::RemoveDirAll => {
+          // return AtFlags::AT_REMOVEDIR
+        }
+        UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
+        UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
+      };
+      let res = unsafe {
+        libc::unlinkat(fd, cstr.as_ptr(), atflag.bits() as libc::c_int)
+      };
+      Errno::result(res).map(drop)
+    })
+    .and_then(|ok| ok)
+}
+
+fn _unlinkat_dir(fd: RawFd, path: &CStr) -> Result<()> {
+  // FIXME
+  let is_symlink = false;
+  if is_symlink {
+    unlinkat(Some(fd), path, UnlinkatFlags::NoRemoveDir)
+  } else {
+    _unlinkat_dir_all(fd, path)
+  }
+}
+
+fn _unlinkat_dir_all(fd: RawFd, path: &CStr) -> Result<()> {
+  let dir = nix::dir::Dir::openat(fd, path, OFlag, Mode)?;
+  for child in dir.iter() {
+    let child = child?;
+    let child_name = child.file_name();
+    if child_name != "." && child_name != ".." {
+      let is_dir = match child.file_type() {
+        Some(nix::dir::Type::Directory) => true,
+        Some(_) => false,
+        None => {
+          // FIXME
+          false
+        }
+      };
+      if is_dir {
+        _unlinkat_dir_all(fd, child_path)?;
+      } else {
+        unlinkat(Some(fd), child_path, UnlinkatFlags::NoRemoveDir)?;
+      }
+    }
+  }
+  unlinkat(Some(fd), path, UnlinkatFlags::RemoveDir)
+}
 
 #[cfg(test)]
 mod tests {
