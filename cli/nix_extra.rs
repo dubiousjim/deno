@@ -492,8 +492,12 @@ pub fn unlinkat<P: ?Sized + NixPath>(
     path.with_nix_path(|cstr| {
       let atflag = match flag {
         UnlinkatFlags::RemoveDirAll => {
-          // return AtFlags::AT_REMOVEDIR
-          return Ok(());
+          let is_symlink = false; // FIXME
+          if is_symlink {
+            AtFlags::empty()
+          } else {
+            return _unlinkat_all(fd, path)
+          }
         }
         UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
         UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
@@ -506,17 +510,7 @@ pub fn unlinkat<P: ?Sized + NixPath>(
     .and_then(|ok| ok)
 }
 
-fn _unlinkat_dir(fd: RawFd, path: &CStr) -> Result<()> {
-  // FIXME
-  let is_symlink = false;
-  if is_symlink {
-    unlinkat(Some(fd), path, UnlinkatFlags::NoRemoveDir)
-  } else {
-    _unlinkat_dir_all(fd, path)
-  }
-}
-
-fn _unlinkat_dir_all(fd: RawFd, path: &CStr) -> Result<()> {
+fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   let mut dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
   for child in dir.iter() {
     let child = child?;
@@ -527,8 +521,7 @@ fn _unlinkat_dir_all(fd: RawFd, path: &CStr) -> Result<()> {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
         None => {
-          // FIXME
-          false
+          false // FIXME
         }
       };
       if is_dir {
