@@ -485,7 +485,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
-        None => filetypeat(fd, child_name, true)? == libc::S_IFDIR,
+        None => filetypeat(dirfd, child_name, true)? == libc::S_IFDIR,
       };
       eprintln!("    child({}, {:?}, {})", fd, &child_name, is_dir);
       if is_dir {
@@ -493,7 +493,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       } else {
         let atflag = AtFlags::empty();
         let res = unsafe {
-          libc::unlinkat(fd, child_name.as_ptr(), atflag.bits() as libc::c_int)
+          libc::unlinkat(dirfd, child_name.as_ptr(), atflag.bits() as libc::c_int)
         };
         Errno::result(res)?;
       }
