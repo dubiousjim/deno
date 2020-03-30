@@ -494,7 +494,10 @@ pub fn unlinkat<P: ?Sized + NixPath>(
   path.with_nix_path(|cstr| {
     let atflag = match flag {
       UnlinkatFlags::RemoveDirAll => {
-        let is_dir = false; // FIXME
+        let mut stat: stat64 = unsafe { mem::zeroed() };
+        let res = unsafe { fstatat64(fd, child_name.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW) };
+        Errno::result(res)?;
+        let is_dir = (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR;
         if is_dir {
           return _unlinkat_all(fd, path)
         } else {
@@ -514,26 +517,38 @@ pub fn unlinkat<P: ?Sized + NixPath>(
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   let mut dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
+  let curdir_name = CString::new(".").as_c_str();
+  let pardir_name = CString::new("..").as_c_str();
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
-    // if child_name != "." && child_name != ".." {
-    if true {
+    if child_name != curdir_name && child_name != pardir_name {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
         None => {
-          false // FIXME
+          let mut stat: stat64 = unsafe { mem::zeroed() };
+          let res = unsafe { fstatat64(fd, child_name.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW) };
+          Errno::result(res)?;
+          (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR
         }
       };
       if is_dir {
-        _unlinkat_dir_all(fd, child_name)?;
+        _unlinkat_all(fd, child_name)?;
       } else {
-        unlinkat(Some(fd), child_name, UnlinkatFlags::NoRemoveDir)?;
+        let atflag = AtFlags::empty();
+        let res = unsafe {
+          libc::unlinkat(fd, child_name.as_ptr(), atflag.bits() as libc::c_int)
+        };
+        Errno::result(res)?;
       }
     }
   }
-  unlinkat(Some(fd), path, UnlinkatFlags::RemoveDir)
+  let atflag = AtFlags::AT_REMOVEDIR;
+  let res = unsafe {
+    libc::unlinkat(fd, child_name.as_ptr(), atflag.bits() as libc::c_int)
+  };
+  Errno::result(res).map(drop)
 }
 
 #[cfg(test)]
