@@ -522,7 +522,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
-    let child_str: _ = child_name;
+    let child_str = child_name.to_str()?;
     if child_str != "." && child_str != ".." {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
