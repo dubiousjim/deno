@@ -336,6 +336,7 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
       nix::Error::Sys(EEXIST) => ErrorKind::AlreadyExists,
+      nix::Error::Sys(ENOTEMPTY) => ErrorKind::Other,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(code) => {
         dbg!("unexpected nix::Error::Sys", code);
