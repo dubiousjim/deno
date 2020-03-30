@@ -489,16 +489,16 @@ pub fn unlinkat<P: ?Sized + NixPath>(
   dirfd: Option<RawFd>,
   path: &P,
   flag: UnlinkatFlags,
-   Result<()> {
+) -> Result<()> {
   let fd = dirfd.unwrap_or(libc::AT_FDCWD);
   path.with_nix_path(|cstr| {
     let atflag = match flag {
       UnlinkatFlags::RemoveDirAll => {
-        let is_symlink = false; // FIXME
-        if is_symlink {
-          AtFlags::empty()
-        } else {
+        let is_dir = false; // FIXME
+        if is_dir {
           return _unlinkat_all(fd, path)
+        } else {
+          AtFlags::empty()
         }
       }
       UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
