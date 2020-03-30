@@ -517,7 +517,7 @@ fn _unlinkat_dir(fd: RawFd, path: &CStr) -> Result<()> {
 }
 
 fn _unlinkat_dir_all(fd: RawFd, path: &CStr) -> Result<()> {
-  let dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
+  let mut dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
