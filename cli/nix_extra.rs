@@ -387,6 +387,7 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
 }
 
 fn cstr(path: &Path) -> Result<CString> {
+  use std::os::unix::ffi::OsStrExt;
   match CString::new(path.as_os_str().as_bytes()) {
     Ok(cstr) => Ok(cstr),
     Err(_) => Err(nix::Error::InvalidUtf8),
