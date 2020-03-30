@@ -6,8 +6,7 @@ use nix::fcntl::AtFlags;
 use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
 use std::path::Path;
-// #[allow(unused_imports)]
-use std::ffi::CString;
+use std::ffi::{CString, CStr};
 use std::mem;
 use std::os::unix::io::RawFd;
 #[allow(unused_imports)]
@@ -494,6 +493,7 @@ pub fn unlinkat<P: ?Sized + NixPath>(
       let atflag = match flag {
         UnlinkatFlags::RemoveDirAll => {
           // return AtFlags::AT_REMOVEDIR
+          return Ok(());
         }
         UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
         UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
