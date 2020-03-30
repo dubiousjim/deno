@@ -476,7 +476,7 @@ fn op_mkdir(
     {
       use crate::nix_extra::mkdirat;
       let fd = atdir.map(|dir| dir.as_raw_fd());
-      mkdirat(fd, &path, mode, args.recursive)?;
+      mkdirat(fd, &path, Mode::from_bits_truncate(mode as mode_t), args.recursive)?;
     }
     #[cfg(not(unix))]
     {
