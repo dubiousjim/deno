@@ -772,7 +772,7 @@ fn op_remove(
       let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
         UnlinkatFlags::NoRemoveDir
       } else if recursive {
-        dbg!("mark1", path);
+        dbg!("mark1", &path);
         UnlinkatFlags::RemoveDirAll
       } else {
         UnlinkatFlags::RemoveDir
