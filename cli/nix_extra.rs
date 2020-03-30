@@ -321,7 +321,7 @@ pub fn filetypeat(fd: RawFd, path: &CStr, nofollow: bool) -> Result<mode_t> {
   Ok(stat.st_mode & libc::S_IFMT)
 }
 
-fn cstr(path: &Path) -> Result<CString> {
+pub fn cstr(path: &Path) -> Result<CString> {
   use std::os::unix::ffi::OsStrExt;
   match CString::new(path.as_os_str().as_bytes()) {
     Ok(cstr) => Ok(cstr),

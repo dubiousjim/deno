@@ -720,6 +720,7 @@ struct RemoveArgs {
   promise_id: Option<u64>,
   path: String,
   recursive: bool,
+  atrid: Option<i32>,
 }
 
 fn op_remove(
@@ -733,25 +734,64 @@ fn op_remove(
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_remove {} {}", path.display(), recursive);
-    let metadata = tokio::fs::symlink_metadata(&path).await?;
-    let file_type = metadata.file_type();
-    if file_type.is_file() || file_type.is_symlink() {
-      tokio::fs::remove_file(&path).await?;
-    } else if recursive {
-      tokio::fs::remove_dir_all(&path).await?;
-    } else {
-      tokio::fs::remove_dir(&path).await?;
+    #[cfg(unix)]
+    {
+      use crate::nix_extra::{cstr, unlinkat, UnlinkatFlags};
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      let cpath = cstr(&path)?;
+      let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
+        UnlinkatFlags::NoRemoveDir
+      } else if recursive {
+        UnlinkatFlags::RemoveDirAll
+      } else {
+        UnlinkatFlags::RemoveDir
+      };
+      unlinkat(fd, &path, flag)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let metadata = std::fs::symlink_metadata(&path)?;
+      let file_type = metadata.file_type();
+      if file_type.is_file() || file_type.is_symlink() {
+        std::fs::remove_file(&path)?;
+      } else if recursive {
+        std::fs::remove_dir_all(&path)?;
+      } else {
+        std::fs::remove_dir(&path)?;
+      }
     }
     Ok(json!({}))
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
