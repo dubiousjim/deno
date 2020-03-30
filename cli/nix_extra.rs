@@ -490,7 +490,7 @@ pub fn unlinkat<P: ?Sized + NixPath>(
     flag: UnlinkatFlags,
 ) -> Result<()> {
     let fd = dirfd.unwrap_or(libc::AT_FDCWD);
-    path.wirh_nix_path(|cstr| {
+    path.with_nix_path(|cstr| {
       let atflag = match flag {
         UnlinkatFlags::RemoveDirAll => {
           // return AtFlags::AT_REMOVEDIR
@@ -521,7 +521,8 @@ fn _unlinkat_dir_all(fd: RawFd, path: &CStr) -> Result<()> {
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
-    if child_name != "." && child_name != ".." {
+    // if child_name != "." && child_name != ".." {
+    if true {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
@@ -531,9 +532,9 @@ fn _unlinkat_dir_all(fd: RawFd, path: &CStr) -> Result<()> {
         }
       };
       if is_dir {
-        _unlinkat_dir_all(fd, child_path)?;
+        _unlinkat_dir_all(fd, child_name)?;
       } else {
-        unlinkat(Some(fd), child_path, UnlinkatFlags::NoRemoveDir)?;
+        unlinkat(Some(fd), child_name, UnlinkatFlags::NoRemoveDir)?;
       }
     }
   }
