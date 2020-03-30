@@ -476,11 +476,12 @@ fn _mkdir_all(path: &Path, mode: mode_t) -> Result<()> {
   }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub enum UnlinkatFlags {
-    RemoveDirAll,
-    RemoveDir,
-    NoRemoveDir,
+  RemoveDirAll,
+  RemoveDir,
+  NoRemoveDir,
 }
 
 #[allow(dead_code)]
