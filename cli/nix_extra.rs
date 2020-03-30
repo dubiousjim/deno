@@ -489,6 +489,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       };
       dbg!("mark3b", child_name, is_dir);
       if is_dir {
+        let dir = dir.clone();
         _unlinkat_all(dir.as_raw_fd(), child_name)?;
       } else {
         let atflag = AtFlags::empty();
