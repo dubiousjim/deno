@@ -2,7 +2,7 @@
 // These are functions that should/will be in the nix crate, but aren't yet in nix 0.17
 
 use nix::errno::Errno;
-use nix::fcntl::{/*AtFlags,*/ OFlag};
+use nix::fcntl::OFlag;
 use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
 use std::ffi::{CStr, CString};
@@ -460,10 +460,14 @@ pub fn unlinkat<P: ?Sized + NixPath>(
           }
         }
         UnlinkatFlags::RemoveDir => libc::AT_REMOVEDIR, // AtFlags::AT_REMOVEDIR,
-        UnlinkatFlags::NoRemoveDir => 0, // AtFlags::empty(),
+        UnlinkatFlags::NoRemoveDir => 0,                // AtFlags::empty(),
       };
       let res = unsafe {
-        libc::unlinkat(fd, cstr.as_ptr(), atflag /*atflag.bits() as libc::c_int*/)
+        libc::unlinkat(
+          fd,
+          cstr.as_ptr(),
+          atflag, /*atflag.bits() as libc::c_int*/
+        )
       };
       Errno::result(res).map(drop)
     })
@@ -492,19 +496,12 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       if is_dir {
         _unlinkat_all(dirfd, child_name)?;
       } else {
-        let res = unsafe {
-          libc::unlinkat(
-            dirfd,
-            child_name.as_ptr(),
-            0,
-          )
-        };
+        let res = unsafe { libc::unlinkat(dirfd, child_name.as_ptr(), 0) };
         Errno::result(res)?;
       }
     }
   }
-  let res =
-    unsafe { libc::unlinkat(fd, path.as_ptr(), libc::AT_REMOVEDIR) };
+  let res = unsafe { libc::unlinkat(fd, path.as_ptr(), libc::AT_REMOVEDIR) };
   Errno::result(res).map(drop)
 }
 
@@ -536,16 +533,11 @@ mod tests {
     let dirfd = open(tempdir.path(), OFlag::empty(), Mode::empty()).unwrap();
     let not_exist_file = "does_not_exist.txt";
     assert_eq!(
-      faccessat(
-        Some(dirfd),
-        not_exist_file,
-        AccessFlags::F_OK,
-        false,
-      )
-      .err()
-      .unwrap()
-      .as_errno()
-      .unwrap(),
+      faccessat(Some(dirfd), not_exist_file, AccessFlags::F_OK, false,)
+        .err()
+        .unwrap()
+        .as_errno()
+        .unwrap(),
       Errno::ENOENT
     );
   }
