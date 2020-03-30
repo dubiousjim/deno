@@ -419,7 +419,7 @@ fn _mkdirat(fd: RawFd, path: &Path, mode: mode_t, recursive: bool) -> Result<()>
   }
 }
 
-fn _mkdirat_all(fd: RawFd, path: &Path, mode: mode_t) -> Result<()> {
+fn _mkdirat_all(_fd: RawFd, _path: &Path, _mode: mode_t) -> Result<()> {
   // FIXME
   Ok(())
 }
