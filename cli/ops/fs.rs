@@ -1197,8 +1197,6 @@ fn op_rename(
   };
 
   // TODO(jp5) rename (complex)
-  let _ = oldatdir; // avoid unused warning
-  let _ = newatdir;
 
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
@@ -1207,7 +1205,8 @@ fn op_rename(
     /////
     #[cfg(unix)]
     {
-      let _ = atdir; // avoid unused warning
+      let _ = oldatdir; // avoid unused warning
+      let _ = newatdir;
       if create_new {
         // like `mv -Tn`, we don't follow symlinks
         let old_meta = std::fs::symlink_metadata(&oldpath)?;
@@ -1228,7 +1227,8 @@ fn op_rename(
     }
     #[cfg(not(unix))]
     {
-      let _ = atdir; // avoid unused warning
+      let _ = oldatdir; // avoid unused warning
+      let _ = newatdir;
       if create_new {
         // on Windows, mv from dir to dir always fails, but to file is ok
         let mut open_options = std::fs::OpenOptions::new();
