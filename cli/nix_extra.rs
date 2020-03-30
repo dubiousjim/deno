@@ -472,6 +472,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   dbg!("mark2", path);
   let mut dir =
     nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
+  let dirfd = dir.as_raw_fd();
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
@@ -489,8 +490,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       };
       dbg!("mark3b", child_name, is_dir);
       if is_dir {
-        let dir = dir.clone();
-        _unlinkat_all(dir.as_raw_fd(), child_name)?;
+        _unlinkat_all(dirfd, child_name)?;
       } else {
         let atflag = AtFlags::empty();
         let res = unsafe {
