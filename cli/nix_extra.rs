@@ -397,7 +397,7 @@ fn cstr(path: &Path) -> Result<CString> {
 #[allow(dead_code)]
 pub fn mkdirat<P: ?Sized + NixPath>(dirfd: Option<RawFd>, path: &P, mode: Mode, recursive: bool) -> Result<()> {
   path.with_nix_path(|cstr| {
-    let path = Path::new(cstr);
+    let path = Path::new(&cstr);
     match dirfd {
       Some(fd) => _mkdirat(fd, path.as_ref(), mode.bits() as mode_t, recursive),
       None => _mkdir(path.as_ref(), mode.bits() as mode_t, recursive),
