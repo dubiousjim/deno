@@ -347,9 +347,9 @@ pub fn mkdirat<P: ?Sized + NixPath>(
       };
       match dirfd {
         Some(fd) => {
-          _mkdirat(fd, path.as_ref(), mode.bits() as mode_t, recursive)
+          _mkdirat(fd, path, mode.bits() as mode_t, recursive)
         }
-        None => _mkdir(path.as_ref(), mode.bits() as mode_t, recursive),
+        None => _mkdir(path, mode.bits() as mode_t, recursive),
       }
     })
     .and_then(|ok| ok)
@@ -491,7 +491,11 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       } else {
         let atflag = AtFlags::empty();
         let res = unsafe {
-          libc::unlinkat(dirfd, child_name.as_ptr(), atflag.bits() as libc::c_int)
+          libc::unlinkat(
+            dirfd,
+            child_name.as_ptr(),
+            atflag.bits() as libc::c_int,
+          )
         };
         Errno::result(res)?;
       }
