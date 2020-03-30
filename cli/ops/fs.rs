@@ -758,7 +758,7 @@ fn op_remove(
     debug!("op_remove {} {}", path.display(), recursive);
     #[cfg(unix)]
     {
-      use crate::nix_extra::{cstr, unlinkat, UnlinkatFlags};
+      use crate::nix_extra::{cstr, unlinkat, UnlinkatFlags, Mode, mode_t, filetypeat};
       let fd = atdir.map(|dir| dir.as_raw_fd());
       let cpath = cstr(&path)?;
       let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
