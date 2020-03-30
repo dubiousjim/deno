@@ -488,7 +488,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       };
       dbg!("mark3b", child_name, is_dir);
       if is_dir {
-        _unlinkat_all(fd, child_name)?;
+        _unlinkat_all(dir.as_raw_fd(), child_name)?;
       } else {
         let atflag = AtFlags::empty();
         let res = unsafe {
