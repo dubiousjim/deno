@@ -1183,20 +1183,38 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    if create_new {
-      // like `mv -Tn`, we don't follow symlinks
-      let old_meta = std::fs::symlink_metadata(&oldpath)?;
-      if cfg!(unix) && old_meta.is_dir() {
-        // on Unix, mv from dir to file always fails, but to emptydir is ok
-        std::fs::create_dir(&newpath)?;
-      } else {
+    /////
+    #[cfg(unix)]
+    {
+      let _ = atdir; // avoid unused warning
+      if create_new {
+        // like `mv -Tn`, we don't follow symlinks
+        let old_meta = std::fs::symlink_metadata(&oldpath)?;
+        if old_meta.is_dir() {
+          // on Unix, mv from dir to file always fails, but to emptydir is ok
+          std::fs::create_dir(&newpath)?;
+        } else {
+          /*
+          let mut open_options = std::fs::OpenOptions::new();
+          open_options.write(true).create_new(true);
+          if let Err(e) = open_options.open(&newpath) {
+            return Err(OpError::from(e));
+          }
+          */
+        }
+      }
+      std::fs::rename(&oldpath, &newpath)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      if create_new {
         // on Windows, mv from dir to dir always fails, but to file is ok
         let mut open_options = std::fs::OpenOptions::new();
         open_options.write(true).create_new(true);
         if let Err(e) = open_options.open(&newpath) {
           // if newpath.is_dir(), prefer to fail with AlreadyExists
-          if cfg!(windows)
-            && e.kind() == std::io::ErrorKind::PermissionDenied
+          if e.kind() == std::io::ErrorKind::PermissionDenied
             && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir())
           {
             // alternately, "The file exists. (os error 80)"
@@ -1205,8 +1223,8 @@ fn op_rename(
           return Err(OpError::from(e));
         }
       }
+      std::fs::rename(&oldpath, &newpath)?;
     }
-    std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   };
 
