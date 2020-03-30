@@ -1196,17 +1196,15 @@ fn op_rename(
     None => None,
   };
 
-  // TODO(jp5) rename (complex)
-
   // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    /////
     #[cfg(unix)]
     {
-      let _ = oldatdir; // avoid unused warning
-      let _ = newatdir;
+      use nix::fnctl::renameat;
+      let oldfd = atdir.map(|dir| dir.as_raw_fd());
+      let newfd = atdir.map(|dir| dir.as_raw_fd());
       if create_new {
         // like `mv -Tn`, we don't follow symlinks
         let old_meta = std::fs::symlink_metadata(&oldpath)?;
@@ -1221,7 +1219,7 @@ fn op_rename(
           }
         }
       }
-      std::fs::rename(&oldpath, &newpath)?;
+      renameat(oldfd, &oldpath, newfd, &newpath)?;
     }
     #[cfg(not(unix))]
     {
