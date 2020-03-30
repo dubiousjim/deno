@@ -483,31 +483,32 @@ pub enum UnlinkatFlags {
     NoRemoveDir,
 }
 
+#[allow(dead_code)]
 pub fn unlinkat<P: ?Sized + NixPath>(
-    dirfd: Option<RawFd>,
-    path: &P,
-    flag: UnlinkatFlags,
-) -> Result<()> {
-    let fd = dirfd.unwrap_or(libc::AT_FDCWD);
-    path.with_nix_path(|cstr| {
-      let atflag = match flag {
-        UnlinkatFlags::RemoveDirAll => {
-          let is_symlink = false; // FIXME
-          if is_symlink {
-            AtFlags::empty()
-          } else {
-            return _unlinkat_all(fd, path)
-          }
+  dirfd: Option<RawFd>,
+  path: &P,
+  flag: UnlinkatFlags,
+   Result<()> {
+  let fd = dirfd.unwrap_or(libc::AT_FDCWD);
+  path.with_nix_path(|cstr| {
+    let atflag = match flag {
+      UnlinkatFlags::RemoveDirAll => {
+        let is_symlink = false; // FIXME
+        if is_symlink {
+          AtFlags::empty()
+        } else {
+          return _unlinkat_all(fd, path)
         }
-        UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
-        UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
-      };
-      let res = unsafe {
-        libc::unlinkat(fd, cstr.as_ptr(), atflag.bits() as libc::c_int)
-      };
-      Errno::result(res).map(drop)
-    })
-    .and_then(|ok| ok)
+      }
+      UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
+      UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
+    };
+    let res = unsafe {
+      libc::unlinkat(fd, cstr.as_ptr(), atflag.bits() as libc::c_int)
+    };
+    Errno::result(res).map(drop)
+  })
+  .and_then(|ok| ok)
 }
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
