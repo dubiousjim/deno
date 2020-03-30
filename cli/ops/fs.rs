@@ -474,7 +474,7 @@ fn op_mkdir(
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     #[cfg(unix)]
     {
-      use crate::nix_extra::mkdirat;
+      use crate::nix_extra::{mkdirat, Mode, mode_t};
       let fd = atdir.map(|dir| dir.as_raw_fd());
       mkdirat(fd, &path, Mode::from_bits_truncate(mode as mode_t), args.recursive)?;
     }
@@ -758,8 +758,11 @@ fn op_remove(
     debug!("op_remove {} {}", path.display(), recursive);
     #[cfg(unix)]
     {
-      use crate::nix_extra::{cstr, unlinkat, UnlinkatFlags, Mode, mode_t, filetypeat};
-      let fd = atdir.map(|dir| dir.as_raw_fd());
+      use crate::nix_extra::{cstr, unlinkat, UnlinkatFlags, filetypeat};
+      let fd = match atdir {
+        Some(dir) => dir.as_faw_fd(),
+        None => libc::AT_FDCWD,
+      };
       let cpath = cstr(&path)?;
       let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
         UnlinkatFlags::NoRemoveDir
