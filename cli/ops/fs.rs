@@ -436,6 +436,7 @@ struct MkdirArgs {
   path: String,
   recursive: bool,
   mode: Option<u32>,
+  atrid: Option<i32>,
 }
 
 fn op_mkdir(
@@ -449,9 +450,43 @@ fn op_mkdir(
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
+  // FIXME(jp3) mixed blocking
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
+  let blocking = move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+    #[cfg(unix)]
+    {
+      use crate::nix_extra::mkdirat;
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      mkdirat(fd, &path, mode, args.recursive)?;
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = atdir; // avoid unused warning
+      let mut builder = std::fs::DirBuilder::new();
+      builder.recursive(args.recursive);
+      builder.create(path)?;
+    }
+    Ok(json!({}))
+    /*
     if args.recursive {
       // exit early if dir already exists, so that we don't
       // try to apply mode and remove dir on failure
@@ -491,12 +526,15 @@ fn op_mkdir(
       }
     }
     Ok(json!({}))
+    */
   };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let res = blocking()?;
+    Ok(JsonOp::Sync(res))
   } else {
+    let fut =
+      async move { tokio::task::spawn_blocking(blocking).await.unwrap() };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
