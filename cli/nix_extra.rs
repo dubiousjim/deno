@@ -468,6 +468,7 @@ pub fn unlinkat<P: ?Sized + NixPath>(
 }
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
+  use std::os::unix::io::AsRawFd;
   dbg!("mark2", path);
   let mut dir =
     nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
