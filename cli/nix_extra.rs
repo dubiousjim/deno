@@ -495,11 +495,11 @@ pub fn unlinkat<P: ?Sized + NixPath>(
     let atflag = match flag {
       UnlinkatFlags::RemoveDirAll => {
         let mut stat: stat64 = unsafe { mem::zeroed() };
-        let res = unsafe { fstatat64(fd, child_name.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW) };
+        let res = unsafe { fstatat64(fd, cstr.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW) };
         Errno::result(res)?;
         let is_dir = (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR;
         if is_dir {
-          return _unlinkat_all(fd, path)
+          return _unlinkat_all(fd, cstr)
         } else {
           AtFlags::empty()
         }
@@ -517,8 +517,8 @@ pub fn unlinkat<P: ?Sized + NixPath>(
 
 fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   let mut dir = nix::dir::Dir::openat(fd, path, OFlag::O_RDONLY, Mode::empty())?;
-  let curdir_name = CString::new(".").as_c_str();
-  let pardir_name = CString::new("..").as_c_str();
+  let curdir_name = CString::new(".")?.as_c_str();
+  let pardir_name = CString::new("..")?.as_c_str();
   for child in dir.iter() {
     let child = child?;
     let child_name = child.file_name();
@@ -546,7 +546,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   }
   let atflag = AtFlags::AT_REMOVEDIR;
   let res = unsafe {
-    libc::unlinkat(fd, child_name.as_ptr(), atflag.bits() as libc::c_int)
+    libc::unlinkat(fd, path.as_ptr(), atflag.bits() as libc::c_int)
   };
   Errno::result(res).map(drop)
 }
