@@ -2,7 +2,7 @@
 // These are functions that should/will be in the nix crate, but aren't yet in nix 0.17
 
 use nix::errno::Errno;
-use nix::fcntl::{AtFlags, OFlag};
+use nix::fcntl::{/*AtFlags,*/ OFlag};
 use nix::unistd::{AccessFlags, Gid, Uid};
 use nix::{NixPath, Result};
 use std::ffi::{CStr, CString};
@@ -47,14 +47,19 @@ pub fn faccessat<P: ?Sized + NixPath>(
   dirfd: Option<RawFd>,
   path: &P,
   mode: AccessFlags,
-  flag: AtFlags,
+  nofollow: bool,
 ) -> Result<()> {
+  let flag = if nofollow {
+    libc::AT_SYMLINK_NOFOLLOW
+  } else {
+    0
+  };
   let rawfd = match dirfd {
     None => libc::AT_FDCWD,
     Some(fd) => fd,
   };
   let res = path.with_nix_path(|cstr| unsafe {
-    libc::faccessat(rawfd, cstr.as_ptr(), mode.bits(), flag.bits())
+    libc::faccessat(rawfd, cstr.as_ptr(), mode.bits(), flag)
   })?;
   Errno::result(res).map(drop)
 }
@@ -451,14 +456,14 @@ pub fn unlinkat<P: ?Sized + NixPath>(
           if filetypeat(fd, cstr, true)? == libc::S_IFDIR {
             return _unlinkat_all(fd, cstr);
           } else {
-            AtFlags::empty()
+            0 // AtFlags::empty()
           }
         }
-        UnlinkatFlags::RemoveDir => AtFlags::AT_REMOVEDIR,
-        UnlinkatFlags::NoRemoveDir => AtFlags::empty(),
+        UnlinkatFlags::RemoveDir => libc::AT_REMOVEDIR, // AtFlags::AT_REMOVEDIR,
+        UnlinkatFlags::NoRemoveDir => 0, // AtFlags::empty(),
       };
       let res = unsafe {
-        libc::unlinkat(fd, cstr.as_ptr(), atflag.bits() as libc::c_int)
+        libc::unlinkat(fd, cstr.as_ptr(), atflag /*atflag.bits() as libc::c_int*/)
       };
       Errno::result(res).map(drop)
     })
@@ -487,28 +492,26 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       if is_dir {
         _unlinkat_all(dirfd, child_name)?;
       } else {
-        let atflag = AtFlags::empty();
         let res = unsafe {
           libc::unlinkat(
             dirfd,
             child_name.as_ptr(),
-            atflag.bits() as libc::c_int,
+            0,
           )
         };
         Errno::result(res)?;
       }
     }
   }
-  let atflag = AtFlags::AT_REMOVEDIR;
   let res =
-    unsafe { libc::unlinkat(fd, path.as_ptr(), atflag.bits() as libc::c_int) };
+    unsafe { libc::unlinkat(fd, path.as_ptr(), libc::AT_REMOVEDIR) };
   Errno::result(res).map(drop)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use nix::fcntl::{open, AtFlags, OFlag};
+  use nix::fcntl::{open, /*AtFlags,*/ OFlag};
   use nix::sys::stat::Mode;
   use nix::unistd::AccessFlags;
   use std::fs::File;
@@ -518,7 +521,7 @@ mod tests {
     let tempdir = tempfile::tempdir().unwrap();
     let dir = tempdir.path().join("does_not_exist.txt");
     assert_eq!(
-      faccessat(None, &dir, AccessFlags::F_OK, AtFlags::empty())
+      faccessat(None, &dir, AccessFlags::F_OK, false)
         .err()
         .unwrap()
         .as_errno()
@@ -537,7 +540,7 @@ mod tests {
         Some(dirfd),
         not_exist_file,
         AccessFlags::F_OK,
-        AtFlags::empty()
+        false,
       )
       .err()
       .unwrap()
@@ -556,7 +559,7 @@ mod tests {
       None,
       &path,
       AccessFlags::R_OK | AccessFlags::W_OK,
-      AtFlags::empty()
+      false,
     )
     .is_ok());
   }
@@ -572,7 +575,7 @@ mod tests {
       Some(dirfd),
       &path,
       AccessFlags::R_OK | AccessFlags::W_OK,
-      AtFlags::empty()
+      false,
     )
     .is_ok());
   }
