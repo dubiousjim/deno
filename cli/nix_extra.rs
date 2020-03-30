@@ -488,6 +488,19 @@ pub enum UnlinkatFlags {
 }
 
 #[allow(dead_code)]
+pub fn filetypeat(fd: RawFd, path: &CStr, nofollow:bool) -> Result<mode_t> {
+  let flag = if nofollow {
+    libc::AT_SYMLINK_NOFOLLOW
+  } else {
+    0
+  };
+  let mut stat: stat64 = unsafe { mem::zeroed() };
+  let res = unsafe { fstatat64(fd, path.as_ptr(), &mut stat, flag) };
+  Errno::result(res)?;
+  Ok(stat.st_mode & libc::S_IFMT)
+}
+
+#[allow(dead_code)]
 pub fn unlinkat<P: ?Sized + NixPath>(
   dirfd: Option<RawFd>,
   path: &P,
@@ -497,11 +510,7 @@ pub fn unlinkat<P: ?Sized + NixPath>(
   path.with_nix_path(|cstr| {
     let atflag = match flag {
       UnlinkatFlags::RemoveDirAll => {
-        let mut stat: stat64 = unsafe { mem::zeroed() };
-        let res = unsafe { fstatat64(fd, cstr.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW) };
-        Errno::result(res)?;
-        let is_dir = (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR;
-        if is_dir {
+        if filetypeat(fd, cstr, true) == libc::S_IFDIR {
           return _unlinkat_all(fd, cstr)
         } else {
           AtFlags::empty()
@@ -534,12 +543,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
-        None => {
-          let mut stat: stat64 = unsafe { mem::zeroed() };
-          let res = unsafe { fstatat64(fd, child_name.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW) };
-          Errno::result(res)?;
-          (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR
-        }
+        None => filetypeat(fd, child_name, true) == libc::S_IFDIR,
       };
       if is_dir {
         _unlinkat_all(fd, child_name)?;
