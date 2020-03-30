@@ -434,7 +434,7 @@ pub fn unlinkat<P: ?Sized + NixPath>(
   path.with_nix_path(|cstr| {
     let atflag = match flag {
       UnlinkatFlags::RemoveDirAll => {
-        if filetypeat(fd, cstr, true) == libc::S_IFDIR {
+        if filetypeat(fd, cstr, true)? == libc::S_IFDIR {
           return _unlinkat_all(fd, cstr)
         } else {
           AtFlags::empty()
@@ -465,7 +465,7 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
-        None => filetypeat(fd, child_name, true) == libc::S_IFDIR,
+        None => filetypeat(fd, child_name, true)? == libc::S_IFDIR,
       };
       if is_dir {
         _unlinkat_all(fd, child_name)?;
