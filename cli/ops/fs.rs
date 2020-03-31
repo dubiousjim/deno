@@ -167,14 +167,13 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-
   let fut = async move {
     let fs_file = match open_options.open(&path).await {
       Err(e)
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && tokio::fs::metadata(path).await.is_ok() =>
+          && tokio::fs::metadata(&path).await.is_ok() =>
       {
         // alternately, "The file exists. (os error 80)"
         return Err(OpError::already_exists(
@@ -247,12 +246,14 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   let fut = async move {
+    debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
     Ok(json!(pos))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
@@ -391,8 +392,8 @@ fn op_chmod(
 struct ChownArgs {
   promise_id: Option<u64>,
   path: String,
-  uid: u32,
-  gid: u32,
+  uid: Option<u32>,
+  gid: Option<u32>,
 }
 
 fn op_chown(
@@ -407,13 +408,18 @@ fn op_chown(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
+    debug!(
+      "op_chown {} {} {}",
+      path.display(),
+      args.uid.unwrap_or(0xffff_ffff),
+      args.gid.unwrap_or(0xffff_ffff),
+    );
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = Uid::from_raw(args.uid);
-      let nix_gid = Gid::from_raw(args.gid);
-      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
+      chown(&path, nix_uid, nix_gid)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
@@ -447,8 +453,8 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    let metadata = std::fs::symlink_metadata(&path)?;
     debug!("op_remove {} {}", path.display(), recursive);
+    let metadata = std::fs::symlink_metadata(&path)?;
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
       std::fs::remove_file(&path)?;
@@ -516,13 +522,14 @@ fn op_copy_file(
         .truncate(true)
         .write(true);
       let mut to_file = match open_options.open(&to) {
-        Err(e)
-          if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
-        {
+        Err(e) if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists => {
           match std::fs::metadata(&to) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
               // `to` is dangling symlink
               // we make copyFile behave the same as on its fast path
+              // namely, create the target and "copy through" to it
+              // Python's shutil.copy and Node's fs.copyFileSync do the same
+              // OTOH, `cp -T` in shell will fail when target is dangling symlink
               open_options.create_new(false);
               open_options.open(to)?
             }
@@ -859,7 +866,7 @@ fn op_read_link(
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
     let path = std::fs::read_link(&path)?;
-    let path_str = path.to_str().unwrap();
+    let path_str = path.to_str()?; // .into_os_string().into_string()?.as_str() or .unwrap()
 
     Ok(json!(path_str))
   })
@@ -913,7 +920,7 @@ fn op_truncate(
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && std::fs::metadata(path).map_or(false, |m| m.is_dir()) =>
+          && std::fs::metadata(&path).map_or(false, |m| m.is_dir()) =>
       {
         // alternately, "The file exists. (os error 80)"
         return Err(OpError::already_exists(
@@ -1066,8 +1073,9 @@ fn op_utime(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
-    utime::set_file_times(args.path, args.atime, args.mtime)?;
+    debug!("op_utime {} {} {}", path.display(), args.atime, args.mtime);
+    use utime::set_file_times;
+    set_file_times(&path, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
