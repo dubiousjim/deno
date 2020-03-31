@@ -216,14 +216,13 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-
   let fut = async move {
     let fs_file = match open_options.open(&path).await {
       Err(e)
         if cfg!(windows)
           && create_new
           && e.kind() == std::io::ErrorKind::PermissionDenied
-          && tokio::fs::metadata(path).await.is_ok() =>
+          && tokio::fs::metadata(&path).await.is_ok() =>
       {
         // alternately, "The file exists. (os error 80)"
         return Err(OpError::already_exists(
@@ -300,12 +299,14 @@ fn op_seek(
   };
   let mut file = futures::executor::block_on(tokio_file.try_clone())?;
 
+  let is_sync = args.promise_id.is_none();
   let fut = async move {
+    debug!("op_seek {} {} {}", rid, offset, whence);
     let pos = file.seek(seek_from).await?;
     Ok(json!(pos))
   };
 
-  if args.promise_id.is_none() {
+  if is_sync {
     let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
@@ -487,7 +488,7 @@ fn op_mkdir(
       let _ = atdir; // avoid unused warning
       let mut builder = std::fs::DirBuilder::new();
       builder.recursive(args.recursive);
-      builder.create(path)?;
+      builder.create(&path)?;
     }
     Ok(json!({}))
     /*
@@ -639,8 +640,8 @@ fn op_chmod(
 struct ChownArgs {
   promise_id: Option<u64>,
   path: String,
-  uid: u32,
-  gid: u32,
+  uid: Option<u32>,
+  gid: Option<u32>,
   nofollow: bool,
   atrid: Option<i32>,
 }
@@ -677,12 +678,18 @@ fn op_chown(
   // FIXME(jp3)
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
-    debug!("op_chown {} {} {} {}", path.display(), args.uid, args.gid, nofollow);
+    debug!(
+      "op_chown {} {} {} {}",
+      path.display(),
+      args.uid.unwrap_or(0xffff_ffff),
+      args.gid.unwrap_or(0xffff_ffff),
+      nofollow,
+    );
     #[cfg(unix)]
     {
       use nix::unistd::{fchownat, FchownatFlags, Gid, Uid};
-      let nix_uid = Some(Uid::from_raw(args.uid));
-      let nix_gid = Some(Gid::from_raw(args.gid));
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
       let flag = if nofollow {
         FchownatFlags::NoFollowSymlink
       } else {
@@ -756,13 +763,12 @@ fn op_remove(
     debug!("op_remove {} {}", path.display(), recursive);
     #[cfg(unix)]
     {
-      use crate::nix_extra::{cstr, filetypeat, unlinkat, UnlinkatFlags};
+      use crate::nix_extra::{filetypeat, unlinkat, UnlinkatFlags};
       let fd = match atdir {
         Some(dir) => dir.as_raw_fd(),
         None => libc::AT_FDCWD,
       };
-      let cpath = cstr(&path)?;
-      let flag = if filetypeat(fd, &cpath, true)? != libc::S_IFDIR {
+      let flag = if filetypeat(fd, &path, true)? != libc::S_IFDIR {
         UnlinkatFlags::NoRemoveDir
       } else if recursive {
         UnlinkatFlags::RemoveDirAll
@@ -857,7 +863,9 @@ fn op_copy_file(
         .truncate(true)
         .write(true);
       let mut to_file = match open_options.open(&to) {
-        Err(e) if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists => {
+        Err(e)
+          if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
+        {
           match std::fs::metadata(&to) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
               // `to` is dangling symlink
@@ -866,7 +874,7 @@ fn op_copy_file(
               // Python's shutil.copy and Node's fs.copyFileSync do the same
               // OTOH, `cp -T` in shell will fail when target is dangling symlink
               open_options.create_new(false);
-              open_options.open(to)?
+              open_options.open(&to)?
             }
             _ => return Err(OpError::from(e)),
           }
@@ -875,7 +883,7 @@ fn op_copy_file(
           if cfg!(windows)
             && create_new
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && std::fs::metadata(to).map_or(false, |m| m.is_dir()) =>
+            && std::fs::metadata(&to).map_or(false, |m| m.is_dir()) =>
         {
           // alternately, "The file exists. (os error 80)"
           return Err(OpError::already_exists(
@@ -1019,7 +1027,7 @@ fn op_stat(
       let sflag = SFlag::from_bits_truncate(filestat.st_mode);
       let json_val = json!({
         "isFile": sflag == SFlag::S_IFREG,
-        "isDir": sflag == SFlag::S_IFDIR,
+        "isDirectory": sflag == SFlag::S_IFDIR,
         "isSymlink": sflag == SFlag::S_IFLNK,
         "size": filestat.st_size,
         // all times are i64
@@ -1085,7 +1093,7 @@ fn op_realpath(
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = tokio::fs::canonicalize(&path).await?;
     let mut realpath_str =
-      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+      realpath.into_os_string().into_string()?.replace("\\", "/");
     if cfg!(windows) {
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
@@ -1125,9 +1133,8 @@ fn op_read_dir(
     while let Some(entry) = stream.next_entry().await? {
       let metadata = entry.metadata().await?;
       // Not all filenames can be encoded as UTF-8. Skip those for now.
-      if let Some(filename) = entry.file_name().to_str() {
-        let filename = Some(filename.to_owned());
-        entries.push(get_stat_json(metadata, filename)?);
+      if let Ok(filename) = entry.file_name().into_string() {
+        entries.push(get_stat_json(metadata, Some(filename))?);
       }
     }
     Ok(json!({ "entries": entries }))
@@ -1484,11 +1491,11 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   let blocking = move || {
     debug!("op_read_link {}", path.display());
-    let ostarget: std::ffi::OsString;
+    let target: std::ffi::OsString;
     #[cfg(unix)]
     {
       use nix::fcntl::{readlink, readlinkat};
-      ostarget = match atdir {
+      target = match atdir {
         Some(dir) => {
           let fd = dir.as_raw_fd();
           readlinkat(fd, &path)?
@@ -1502,9 +1509,9 @@ fn op_read_link(
     #[cfg(not(unix))]
     {
       let _ = atdir; // avoid unused warning
-      ostarget = std::fs::read_link(&path)?.into_os_string();
+      target = std::fs::read_link(&path)?.into_os_string();
     }
-    let targetstr = ostarget.into_string()?;
+    let targetstr = target.into_string()?;
     Ok(json!(targetstr))
   };
 
@@ -1603,7 +1610,7 @@ fn make_temp(
 ) -> std::io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
-  let mut buf: PathBuf = match dir {
+  let mut path: PathBuf = match dir {
     Some(ref p) => p.to_path_buf(),
     None => temp_dir(),
   }
@@ -1611,7 +1618,7 @@ fn make_temp(
   let mut rng = thread_rng();
   loop {
     let unique = rng.gen::<u32>();
-    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
+    path.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     let r = if is_dir {
       #[allow(unused_mut)]
       let mut builder = std::fs::DirBuilder::new();
@@ -1620,7 +1627,7 @@ fn make_temp(
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
       }
-      builder.create(buf.as_path())
+      builder.create(&path)
     } else {
       let mut open_options = std::fs::OpenOptions::new();
       open_options.write(true).create_new(true);
@@ -1629,12 +1636,12 @@ fn make_temp(
         use std::os::unix::fs::OpenOptionsExt;
         open_options.mode(0o600);
       }
-      open_options.open(buf.as_path())?;
+      open_options.open(&path)?;
       Ok(())
     };
     match r {
       Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-      Ok(_) => return Ok(buf),
+      Ok(_) => return Ok(path),
       Err(e) => return Err(e),
     }
   }
@@ -1675,7 +1682,7 @@ fn op_make_temp_dir(
       suffix.as_ref().map(|x| &**x),
       true,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = path.into_os_string().into_string()?;
 
     Ok(json!(path_str))
   })
@@ -1707,7 +1714,7 @@ fn op_make_temp_file(
       suffix.as_ref().map(|x| &**x),
       false,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = path.into_os_string().into_string()?;
 
     Ok(json!(path_str))
   })
@@ -1805,7 +1812,7 @@ fn op_cwd(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
-  let path_str = path.into_os_string().into_string().unwrap();
+  let path_str = path.into_os_string().into_string()?;
   Ok(JsonOp::Sync(json!(path_str)))
 }
 

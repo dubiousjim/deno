@@ -295,10 +295,10 @@ pub fn fstatat<P: ?Sized + NixPath>(
 #[allow(dead_code)]
 pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
   cfg_has_statx! {
-    let p = CString::new("").unwrap();
+    let empty = CString::new("").unwrap();
     if let Some(ret) = unsafe { try_statx(
       fd,
-      p.as_ptr(),
+      empty.as_ptr(),
       libc::AT_STATX_SYNC_AS_STAT | libc::AT_EMPTY_PATH,
       libc::STATX_ALL,
     ) } {
@@ -314,24 +314,33 @@ pub fn fstat(fd: RawFd) -> Result<ExtraStat> {
 
 // utility to query only the high bits of st_mode
 #[allow(dead_code)]
-pub fn filetypeat(fd: RawFd, path: &CStr, nofollow: bool) -> Result<mode_t> {
-  let flag = if nofollow {
-    libc::AT_SYMLINK_NOFOLLOW
-  } else {
-    0
-  };
-  let mut stat: stat64 = unsafe { mem::zeroed() };
-  let res = unsafe { fstatat64(fd, path.as_ptr(), &mut stat, flag) };
-  Errno::result(res)?;
-  Ok(stat.st_mode & libc::S_IFMT)
+pub fn filetypeat<P: ?Sized + NixPath>(
+  fd: RawFd,
+  path: &P,
+  nofollow: bool,
+) -> Result<mode_t> {
+  path
+    .with_nix_path(|cstr| {
+      let flag = if nofollow {
+        libc::AT_SYMLINK_NOFOLLOW
+      } else {
+        0
+      };
+      let mut stat: stat64 = unsafe { mem::zeroed() };
+      let res = unsafe { fstatat64(fd, cstr.as_ptr(), &mut stat, flag) };
+      Errno::result(res)?;
+      Ok(stat.st_mode & libc::S_IFMT)
+    })
+    .and_then(|ok| ok)
 }
 
-pub fn cstr(path: &Path) -> Result<CString> {
+fn nix_cstr(path: &Path) -> Result<CString> {
   use std::os::unix::ffi::OsStrExt;
-  match CString::new(path.as_os_str().as_bytes()) {
-    Ok(cstr) => Ok(cstr),
-    Err(_) => Err(nix::Error::InvalidUtf8),
-  }
+  CString::new(path.as_os_str().as_bytes()).map_err(|_| nix::Error::InvalidPath)
+}
+
+fn nix_str(cstr: &CStr) -> Result<&str> {
+  cstr.to_str().map_err(|_| nix::Error::InvalidUtf8)
 }
 
 // Based on https://github.com/rust-lang/rust/blob/master/src/libstd/fs.rs
@@ -346,10 +355,7 @@ pub fn mkdirat<P: ?Sized + NixPath>(
 ) -> Result<()> {
   path
     .with_nix_path(|cstr| {
-      let path = match cstr.to_str() {
-        Ok(s) => Path::new(s),
-        Err(_) => return Err(nix::Error::InvalidUtf8),
-      };
+      let path = Path::new(nix_str(cstr)?);
       match dirfd {
         Some(fd) => _mkdirat(fd, path, mode.bits() as mode_t, recursive),
         None => _mkdir(path, mode.bits() as mode_t, recursive),
@@ -367,7 +373,7 @@ fn _mkdirat(
   if recursive {
     _mkdirat_all(fd, path, mode)
   } else {
-    let cstr = cstr(path)?;
+    let cstr = nix_cstr(path)?;
     let res = unsafe { libc::mkdirat(fd, cstr.as_ptr(), mode) };
     Errno::result(res).map(drop)
   }
@@ -384,7 +390,7 @@ fn _mkdirat_all(fd: RawFd, path: &Path, mode: mode_t) -> Result<()> {
     Err(e) => return Err(e),
   }
   match path.parent() {
-    Some(p) => _mkdirat_all(fd, p, 0o777)?,
+    Some(parent) => _mkdirat_all(fd, parent, 0o777)?,
     // failed to create whole tree
     None => {
       return Err(nix::Error::Sys(nix::errno::Errno::EACCES));
@@ -401,7 +407,7 @@ fn _mkdir(path: &Path, mode: mode_t, recursive: bool) -> Result<()> {
   if recursive {
     _mkdir_all(path, mode)
   } else {
-    let cstr = cstr(path)?;
+    let cstr = nix_cstr(path)?;
     let res = unsafe { libc::mkdir(cstr.as_ptr(), mode) };
     Errno::result(res).map(drop)
   }
@@ -418,7 +424,7 @@ fn _mkdir_all(path: &Path, mode: mode_t) -> Result<()> {
     Err(e) => return Err(e),
   }
   match path.parent() {
-    Some(p) => _mkdir_all(p, 0o777)?,
+    Some(parent) => _mkdir_all(parent, 0o777)?,
     // failed to create whole tree
     None => {
       return Err(nix::Error::Sys(nix::errno::Errno::EACCES));
@@ -481,22 +487,19 @@ fn _unlinkat_all(fd: RawFd, path: &CStr) -> Result<()> {
   let dirfd = dir.as_raw_fd();
   for child in dir.iter() {
     let child = child?;
-    let child_name = child.file_name();
-    let child_str = match child_name.to_str() {
-      Ok(s) => s,
-      Err(_) => return Err(nix::Error::InvalidUtf8),
-    };
+    let childname = child.file_name();
+    let childname_str = nix_str(childname)?;
     // docs for nix::dir::Entry say "Note that unlike the std version, this may represent the . or .. entries."
-    if child_str != "." && child_str != ".." {
+    if childname_str != "." && childname_str != ".." {
       let is_dir = match child.file_type() {
         Some(nix::dir::Type::Directory) => true,
         Some(_) => false,
-        None => filetypeat(dirfd, child_name, true)? == libc::S_IFDIR,
+        None => filetypeat(dirfd, childname, true)? == libc::S_IFDIR,
       };
       if is_dir {
-        _unlinkat_all(dirfd, child_name)?;
+        _unlinkat_all(dirfd, childname)?;
       } else {
-        let res = unsafe { libc::unlinkat(dirfd, child_name.as_ptr(), 0) };
+        let res = unsafe { libc::unlinkat(dirfd, childname.as_ptr(), 0) };
         Errno::result(res)?;
       }
     }

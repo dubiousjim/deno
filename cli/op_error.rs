@@ -211,10 +211,10 @@ impl From<&io::Error> for OpError {
 }
 
 impl From<num::TryFromIntError> for OpError {
-  fn from(_error: num::TryFromIntError) -> Self {
+  fn from(err: num::TryFromIntError) -> Self {
     Self {
-      kind: ErrorKind::Other,
-      msg: "out of range integral type conversion attempted".to_string(),
+      kind: ErrorKind::InvalidData,
+      msg: err.to_string(), // "out of range integral type conversion attempted".to_string(),
     }
   }
 }
@@ -318,11 +318,30 @@ impl From<&serde_json::error::Error> for OpError {
   }
 }
 
-impl From<std::ffi::OsString> for OpError {
-  fn from(_error: std::ffi::OsString) -> Self {
+impl From<std::string::FromUtf8Error> for OpError {
+  fn from(err: std::string::FromUtf8Error) -> Self {
     Self {
       kind: ErrorKind::InvalidData,
-      msg: "invalid Unicode".to_string(),
+      msg: err.to_string(),
+    }
+  }
+}
+
+// do we also need to do std::ffi::IntoStringError?
+impl From<std::str::Utf8Error> for OpError {
+  fn from(err: std::str::Utf8Error) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: err.to_string(),
+    }
+  }
+}
+
+impl From<std::ffi::OsString> for OpError {
+  fn from(_original: std::ffi::OsString) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: "invalid utf8".to_string(),
     }
   }
 }
@@ -341,10 +360,10 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(ENOTDIR) => ErrorKind::Other,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(code) => {
-        dbg!("unexpected nix::Error::Sys", code);
+        eprintln!("Unexpected nix::Error::Sys({})", code);
         unreachable!()
       }
-      nix::Error::InvalidPath => ErrorKind::TypeError,
+      nix::Error::InvalidPath => ErrorKind::InvalidData,
       nix::Error::InvalidUtf8 => ErrorKind::InvalidData,
       nix::Error::UnsupportedOperation => unreachable!(),
     };
