@@ -308,6 +308,43 @@ impl From<&serde_json::error::Error> for OpError {
   }
 }
 
+impl From<std::num::TryFromIntError> for OpError {
+  fn from(err: std::num::TryFromIntError) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: err.to_string(), // "out of range integral type conversion attempted".to_string(),
+    }
+  }
+}
+
+impl From<std::string::FromUtf8Error> for OpError {
+  fn from(err: std::string::FromUtf8Error) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: err.to_string(),
+    }
+  }
+}
+
+// do we also need to do std::ffi::IntoStringError?
+impl From<std::str::Utf8Error> for OpError {
+  fn from(err: std::str::Utf8Error) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: err.to_string(),
+    }
+  }
+}
+
+impl From<std::ffi::OsString> for OpError {
+  fn from(_original: std::ffi::OsString) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: "invalid utf8".to_string(),
+    }
+  }
+}
+
 #[cfg(unix)]
 impl From<nix::Error> for OpError {
   fn from(error: nix::Error) -> Self {
@@ -316,6 +353,10 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
+      nix::Error::Sys(EEXIST) => ErrorKind::AlreadyExists,
+      nix::Error::Sys(ENOTEMPTY) => ErrorKind::Other,
+      nix::Error::Sys(EISDIR) => ErrorKind::Other,
+      nix::Error::Sys(ENOTDIR) => ErrorKind::Other,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(_) => unreachable!(),
       nix::Error::InvalidPath => ErrorKind::TypeError,

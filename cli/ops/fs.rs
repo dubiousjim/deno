@@ -343,7 +343,7 @@ fn op_mkdir(
       use std::os::unix::fs::DirBuilderExt;
       builder.mode(mode);
     }
-    builder.create(path)?;
+    builder.create(&path)?;
     Ok(json!({}))
   })
 }
@@ -531,7 +531,7 @@ fn op_copy_file(
               // Python's shutil.copy and Node's fs.copyFileSync do the same
               // OTOH, `cp -T` in shell will fail when target is dangling symlink
               open_options.create_new(false);
-              open_options.open(to)?
+              open_options.open(&to)?
             }
             _ => return Err(OpError::from(e)),
           }
@@ -540,7 +540,7 @@ fn op_copy_file(
           if cfg!(windows)
             && create_new
             && e.kind() == std::io::ErrorKind::PermissionDenied
-            && std::fs::metadata(to).map_or(false, |m| m.is_dir()) =>
+            && std::fs::metadata(&to).map_or(false, |m| m.is_dir()) =>
         {
           // alternately, "The file exists. (os error 80)"
           return Err(OpError::already_exists(
@@ -678,7 +678,7 @@ fn op_realpath(
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
     let mut realpath_str =
-      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+      realpath.into_os_string().into_string()?.replace("\\", "/");
     if cfg!(windows) {
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
@@ -706,14 +706,14 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = std::fs::read_dir(path)?
+    let entries: Vec<_> = std::fs::read_dir(&path)?
       .filter_map(|entry| {
+        // entry: Result<DirEntry>
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Some(filename) = entry.file_name().to_str() {
-          let filename = Some(filename.to_owned());
-          Some(get_stat_json(metadata, filename).unwrap())
+        if let Ok(filename) = entry.file_name().into_string() {
+          Some(get_stat_json(metadata, Some(filename)).unwrap())
         } else {
           None
         }
@@ -866,8 +866,7 @@ fn op_read_link(
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
     let path = std::fs::read_link(&path)?;
-    let path_str = path.to_str()?; // .into_os_string().into_string()?.as_str() or .unwrap()
-
+    let path_str = path.into_os_string().into_string()?;
     Ok(json!(path_str))
   })
 }
@@ -944,7 +943,7 @@ fn make_temp(
 ) -> std::io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
-  let mut buf: PathBuf = match dir {
+  let mut path: PathBuf = match dir {
     Some(ref p) => p.to_path_buf(),
     None => temp_dir(),
   }
@@ -952,7 +951,7 @@ fn make_temp(
   let mut rng = thread_rng();
   loop {
     let unique = rng.gen::<u32>();
-    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
+    path.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     let r = if is_dir {
       #[allow(unused_mut)]
       let mut builder = std::fs::DirBuilder::new();
@@ -961,7 +960,7 @@ fn make_temp(
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
       }
-      builder.create(buf.as_path())
+      builder.create(&path)
     } else {
       let mut open_options = std::fs::OpenOptions::new();
       open_options.write(true).create_new(true);
@@ -970,12 +969,12 @@ fn make_temp(
         use std::os::unix::fs::OpenOptionsExt;
         open_options.mode(0o600);
       }
-      open_options.open(buf.as_path())?;
+      open_options.open(&path)?;
       Ok(())
     };
     match r {
       Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-      Ok(_) => return Ok(buf),
+      Ok(_) => return Ok(path),
       Err(e) => return Err(e),
     }
   }
@@ -1015,7 +1014,7 @@ fn op_make_temp_dir(
       suffix.as_ref().map(|x| &**x),
       true,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = path.into_os_string().into_string()?;
 
     Ok(json!(path_str))
   })
@@ -1046,7 +1045,7 @@ fn op_make_temp_file(
       suffix.as_ref().map(|x| &**x),
       false,
     )?;
-    let path_str = path.to_str().unwrap();
+    let path_str = path.into_os_string().into_string()?;
 
     Ok(json!(path_str))
   })
@@ -1086,6 +1085,6 @@ fn op_cwd(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
-  let path_str = path.into_os_string().into_string().unwrap();
+  let path_str = path.into_os_string().into_string()?;
   Ok(JsonOp::Sync(json!(path_str)))
 }
