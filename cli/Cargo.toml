@@ -46,7 +46,8 @@ rand = "0.7.3"
 regex = "1.3.5"
 reqwest = { version = "0.10.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 ring = "0.16.11"
-rustyline = "6.0.0"
+# Need to coordinate the versions of rustyline and nix we depend on
+rustyline = "6.1.0"
 serde = { version = "1.0.104", features = ["derive"] }
 serde_derive = "1.0.104"
 serde_json = { version = "1.0.48", features = [ "preserve_order" ] }
@@ -76,7 +77,8 @@ winapi = "0.3.8"
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.14" # rustyline depends on 0.14, to avoid duplicates we do too.
+# Need to depend on the same version of nix that rustyline does
+nix = "0.17"
 
 [dev-dependencies]
 os_pipe = "0.9.1"
