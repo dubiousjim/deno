@@ -109,6 +109,10 @@ impl OpError {
   pub fn bad_resource_id() -> OpError {
     Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
   }
+
+  pub fn invalid_utf8() -> OpError {
+    Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
+  }
 }
 
 impl Error for OpError {}
@@ -318,6 +322,7 @@ impl From<&serde_json::error::Error> for OpError {
   }
 }
 
+/*
 impl From<std::string::FromUtf8Error> for OpError {
   fn from(err: std::string::FromUtf8Error) -> Self {
     Self {
@@ -327,7 +332,7 @@ impl From<std::string::FromUtf8Error> for OpError {
   }
 }
 
-// do we also need to do std::ffi::IntoStringError?
+// do we also need to do std::ffi::IntoStringError, for CString.into_string()?
 impl From<std::str::Utf8Error> for OpError {
   fn from(err: std::str::Utf8Error) -> Self {
     Self {
@@ -336,15 +341,7 @@ impl From<std::str::Utf8Error> for OpError {
     }
   }
 }
-
-impl From<std::ffi::OsString> for OpError {
-  fn from(_original: std::ffi::OsString) -> Self {
-    Self {
-      kind: ErrorKind::InvalidData,
-      msg: "invalid utf8".to_string(),
-    }
-  }
-}
+*/
 
 #[cfg(unix)]
 impl From<nix::Error> for OpError {

@@ -56,6 +56,10 @@ pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_fchdir", s.stateful_json_op(op_fchdir));
 }
 
+fn into_string(s: OsString) -> Result<String, OpError> {
+  s.into_string().map_err(|_| OpError::invalid_utf8())
+}
+
 fn tokio_open_options(
   mode: Option<u32>,
   nofollow: bool,
