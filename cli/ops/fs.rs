@@ -522,7 +522,9 @@ fn op_copy_file(
         .truncate(true)
         .write(true);
       let mut to_file = match open_options.open(&to) {
-        Err(e) if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists => {
+        Err(e)
+          if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
+        {
           match std::fs::metadata(&to) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
               // `to` is dangling symlink
