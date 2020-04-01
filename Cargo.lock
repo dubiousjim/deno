@@ -465,6 +465,7 @@ dependencies = [
  "base64 0.11.0",
  "byteorder",
  "bytes 0.5.4",
+ "cfg-if",
  "clap",
  "deno_core",
  "deno_typescript",
