@@ -13,7 +13,7 @@ export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
 export { transpileOnly, compile, bundle } from "./compiler/api.ts";
 export { inspect } from "./web/console.ts";
-export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
+export { copyFileSync, copyFile, CopyFileOptions } from "./ops/fs/copy_file.ts";
 export {
   Diagnostic,
   DiagnosticCategory,
@@ -108,7 +108,7 @@ export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
 export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
 export { connectTLS, listenTLS } from "./tls.ts";
-export { truncateSync, truncate } from "./ops/fs/truncate.ts";
+export { truncateSync, truncate, TruncateOptions } from "./ops/fs/truncate.ts";
 export { isatty, setRaw } from "./ops/tty.ts";
 export { umask } from "./ops/fs/umask.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";

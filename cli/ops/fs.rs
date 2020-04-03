@@ -88,8 +88,12 @@ fn op_open(
   } else {
     tokio::fs::OpenOptions::new()
   };
+  let mut create_new = false;
 
   if let Some(options) = args.options {
+    let create = options.create;
+    create_new = options.create_new;
+
     if options.read {
       state.check_read(&path)?;
     }
@@ -100,11 +104,11 @@ fn op_open(
 
     open_options
       .read(options.read)
-      .create(options.create)
+      .create(create)
       .write(options.write)
       .truncate(options.truncate)
       .append(options.append)
-      .create_new(options.create_new);
+      .create_new(create_new);
   } else if let Some(open_mode) = args.open_mode {
     let open_mode = open_mode.as_ref();
     match open_mode {
@@ -144,9 +148,11 @@ fn op_open(
         open_options.read(true).create(true).append(true);
       }
       "x" => {
+        create_new = true;
         open_options.create_new(true).write(true);
       }
       "x+" => {
+        create_new = true;
         open_options.create_new(true).read(true).write(true);
       }
       &_ => {
@@ -161,9 +167,23 @@ fn op_open(
   };
 
   let is_sync = args.promise_id.is_none();
-
   let fut = async move {
-    let fs_file = open_options.open(path).await?;
+    let fs_file = match open_options.open(&path).await {
+      Err(e)
+        if cfg!(windows)
+          && create_new
+          && e.kind() == std::io::ErrorKind::PermissionDenied
+          && tokio::fs::metadata(&path).await.is_ok() =>
+      {
+        // alternately, "The file exists. (os error 80)"
+        return Err(OpError::already_exists(
+          "Cannot create a file when that file already exists. (os error 183)"
+            .to_string(),
+        ));
+      }
+      Err(e) => return Err(OpError::from(e)),
+      Ok(f) => f,
+    };
     let mut state = state_.borrow_mut();
     let rid = state.resource_table.add(
       "fsFile",
@@ -444,8 +464,10 @@ fn op_remove(
 #[serde(rename_all = "camelCase")]
 struct CopyFileArgs {
   promise_id: Option<u64>,
-  from: String,
-  to: String,
+  oldpath: String,
+  newpath: String,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_copy_file(
@@ -454,24 +476,81 @@ fn op_copy_file(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
-  let from = resolve_from_cwd(Path::new(&args.from))?;
-  let to = resolve_from_cwd(Path::new(&args.to))?;
+  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
+  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let create = args.create;
+  let create_new = args.create_new;
 
-  state.check_read(&from)?;
-  state.check_write(&to)?;
+  state.check_read(&oldpath)?;
+  state.check_write(&newpath)?;
 
-  debug!("op_copy_file {} {}", from.display(), to.display());
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
-    // See https://github.com/rust-lang/rust/issues/54800
-    // Once the issue is resolved, we should remove this workaround.
-    if cfg!(unix) && !from.is_file() {
-      return Err(OpError::not_found("File not found".to_string()));
+    debug!("op_copy_file {} {}", oldpath.display(), newpath.display());
+    if create && !create_new {
+      if cfg!(unix) {
+        // On *nix, Rust reports non-existent `oldpath` as std::io::ErrorKind::InvalidInput
+        // See https://github.com/rust-lang/rust/issues/54800
+        // Once the issue is resolved, we should remove this check
+        std::fs::metadata(&oldpath)?;
+      }
+      // default, most efficient version -- data never copied out of kernel space
+      // returns size of oldpath as u64 (we ignore)
+      // NOTE: if `newpath` is a dangling symlink, this will create its target and "copy through" to it
+      // Python's shutil.copy and Node's fs.copyFileSync behave the same
+      // `cp -T` on the other hand will fail
+      std::fs::copy(&oldpath, &newpath)?;
+    } else {
+      let mut old_file =
+        std::fs::OpenOptions::new().read(true).open(&oldpath)?;
+      let old_meta = old_file.metadata()?;
+      if cfg!(unix) && old_meta.is_dir() {
+        // when copyFile("dir", ...), prioritize "Is a directory" error for `oldpath`
+        // over NotFound (from !create) or AlreadyExists (from createNew) errors for `newpath`
+        return Err(OpError::other("Is a directory (os error 21)".to_string()));
+      }
+      let mut open_options = std::fs::OpenOptions::new();
+      open_options
+        .create(create)
+        .create_new(create_new)
+        .truncate(true)
+        .write(true);
+      let mut new_file = match open_options.open(&newpath) {
+        Err(e)
+          if cfg!(unix) && e.kind() == std::io::ErrorKind::AlreadyExists =>
+        {
+          match std::fs::metadata(&newpath) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+              // `newpath` is dangling symlink
+              // we make copyFile behave the same as on its fast path
+              // namely, create the target and "copy through" to it
+              // Python's shutil.copy and Node's fs.copyFileSync do the same
+              // OTOH, `cp -T` in shell will fail when target is dangling symlink
+              open_options.create_new(false);
+              open_options.open(&newpath)?
+            }
+            _ => return Err(OpError::from(e)),
+          }
+        }
+        Err(e)
+          if cfg!(windows)
+            && create_new
+            && e.kind() == std::io::ErrorKind::PermissionDenied
+            && std::fs::metadata(&newpath).map_or(false, |m| m.is_dir()) =>
+        {
+          // alternately, "The file exists. (os error 80)"
+          return Err(OpError::already_exists(
+            "Cannot create a file when that file already exists. (os error 183)"
+              .to_string(),
+          ));
+        }
+        Err(e) => return Err(OpError::from(e)),
+        Ok(f) => f,
+      };
+      // returns size of oldpath as u64 (we ignore)
+      std::io::copy(&mut old_file, &mut new_file)?;
+      new_file.set_permissions(old_meta.permissions())?;
     }
-
-    // returns size of from as u64 (we ignore)
-    std::fs::copy(&from, &to)?;
     Ok(json!({}))
   })
 }
@@ -770,6 +849,9 @@ struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
   len: u64,
+  mode: Option<u32>,
+  create: bool,
+  create_new: bool,
 }
 
 fn op_truncate(
@@ -780,14 +862,47 @@ fn op_truncate(
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
   let len = args.len;
+  let create = args.create;
+  let create_new = args.create_new;
 
   state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
-    f.set_len(len)?;
+    let mut open_options = std::fs::OpenOptions::new();
+    if let Some(mode) = args.mode {
+      // mode only used if creating the file on Unix
+      // if not specified, defaults to 0o666
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::OpenOptionsExt;
+        open_options.mode(mode & 0o777);
+      }
+      #[cfg(not(unix))]
+      let _ = mode; // avoid unused warning
+    }
+    open_options
+      .create(create)
+      .create_new(create_new)
+      .write(true);
+    let file = match open_options.open(&path) {
+      Err(e)
+        if cfg!(windows)
+          && create_new
+          && e.kind() == std::io::ErrorKind::PermissionDenied
+          && std::fs::metadata(&path).map_or(false, |m| m.is_dir()) =>
+      {
+        // alternately, "The file exists. (os error 80)"
+        return Err(OpError::already_exists(
+          "Cannot create a file when that file already exists. (os error 183)"
+            .to_string(),
+        ));
+      }
+      Err(e) => return Err(OpError::from(e)),
+      Ok(f) => f,
+    };
+    file.set_len(len)?;
     Ok(json!({}))
   })
 }
