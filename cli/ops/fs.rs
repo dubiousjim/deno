@@ -1107,6 +1107,7 @@ fn op_cwd(
   Ok(JsonOp::Sync(json!(path_str)))
 }
 
+#[allow(dead_code)]
 #[cfg(unix)]
 fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   use nix::fcntl::{fcntl, FcntlArg, OFlag};
@@ -1124,6 +1125,7 @@ fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   }
 }
 
+#[allow(dead_code)]
 #[cfg(unix)]
 fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
   use nix::fcntl::{fcntl, FcntlArg, OFlag};

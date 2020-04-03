@@ -71,6 +71,7 @@ pub fn faccessat<P: ?Sized + NixPath>(
 /// The owner/group for the provided path name will not be modified if `None` is
 /// provided for that argument.  Ownership change will be attempted for the fd
 /// only if `Some` owner/group is provided.
+#[allow(dead_code)]
 pub fn fchown(fd: RawFd, owner: Option<Uid>, group: Option<Gid>) -> Result<()> {
   // According to the POSIX specification, -1 is used to indicate that owner and group
   // are not to be changed.  Since uid_t and gid_t are unsigned types, we have to wrap
