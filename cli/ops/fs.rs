@@ -403,7 +403,9 @@ fn op_chmod(
     {
       use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
       #[cfg(target_os = "macos")]
-      let mode: u16 = mode.try_into()?;
+      let mode: u16 = std::convert::TryInto::try_into(mode)?;
+      // use std::convert::TryInto;
+      // let mode: u16 = mode.try_into()?;
       let nix_mode = Mode::from_bits_truncate(mode);
       let flag = if nofollow {
         FchmodatFlags::NoFollowSymlink
