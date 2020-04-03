@@ -362,6 +362,8 @@ struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
   mode: u32,
+  nofollow: bool,
+  atrid: Option<i32>,
 }
 
 fn op_chmod(
@@ -371,23 +373,52 @@ fn op_chmod(
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
+  let nofollow = args.nofollow;
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
 
+  let atdir = match args.atrid {
+    Some(atrid) if cfg!(unix) => {
+      let state = state.borrow();
+      let resource_holder = state
+        .resource_table
+        .get::<StreamResourceHolder>(atrid as u32)
+        .ok_or_else(OpError::bad_resource_id)?;
+
+      let tokio_dir = match resource_holder.resource {
+        StreamResource::FsFile(ref file, _) => file,
+        _ => return Err(OpError::bad_resource_id()),
+      };
+      Some(futures::executor::block_on(tokio_dir.try_clone())?)
+    }
+    Some(_) => return Err(OpError::not_implemented()),
+    None => None,
+  };
+
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chmod {} {:o}", path.display(), mode);
+    debug!("op_chmod {} {:o} {}", path.display(), mode, nofollow);
     #[cfg(unix)]
     {
-      use std::os::unix::fs::PermissionsExt;
-      let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions)?;
+      use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
+      #[cfg(target_os = "macos")]
+      let mode: u16 = mode.try_into()?;
+      let nix_mode = Mode::from_bits_truncate(mode);
+      let flag = if nofollow {
+        FchmodatFlags::NoFollowSymlink
+      } else {
+        FchmodatFlags::FollowSymlink
+      };
+      let fd = atdir.map(|dir| dir.as_raw_fd());
+      fchmodat(fd, &path, nix_mode, flag)?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
+      let _ = atdir; // avoid unused warning
+
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
       Err(OpError::not_implemented())
