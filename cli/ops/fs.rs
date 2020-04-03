@@ -17,6 +17,9 @@ use tokio;
 
 use rand::{thread_rng, Rng};
 
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, RawFd};
+
 pub fn init(i: &mut Isolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op(op_open));
   i.register_op("op_seek", s.stateful_json_op(op_seek));
@@ -1070,4 +1073,38 @@ fn op_cwd(
   let path = current_dir()?;
   let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))
+}
+
+#[cfg(unix)]
+fn check_open_for_writing(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_WRONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-write flag".to_string(),
+    );
+    Err(e)
+  }
+}
+
+#[cfg(unix)]
+fn check_open_for_reading(file: &tokio::fs::File) -> Result<RawFd, OpError> {
+  use nix::fcntl::{fcntl, FcntlArg, OFlag};
+  let fd = file.as_raw_fd();
+  let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+  let flags = OFlag::from_bits_truncate(flags);
+  let mode = OFlag::O_ACCMODE & flags;
+  if mode == OFlag::O_RDWR || mode == OFlag::O_RDONLY {
+    Ok(fd)
+  } else {
+    let e = OpError::permission_denied(
+      "run again with the --allow-read flag".to_string(),
+    );
+    Err(e)
+  }
 }
